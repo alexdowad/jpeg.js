@@ -702,9 +702,12 @@ class JPEG {
   /* Color space conversion */
 
   convertYCrCbtoRGB(raster, index, y, cr, cb) {
-    const r = this.clampRGB((cr * 1.402) + y);
-    const b = this.clampRGB((cb * 1.772) + y);
-    const g = this.clampRGB((y - (0.114 * b) - (0.299 * r)) / 0.587);
+    /* Y-Cb-Cr conversion as defined in JFIF spec 1.02, page 4
+     * Add 128 to each value to undo the 'level shift' which is applied as
+     * the first step in JPEG encoding */
+    const r = this.clampRGB(y + (cr * 1.402) + 128);
+    const g = this.clampRGB(y - (0.34414 * cb) - (0.71414 * cr) + 128);
+    const b = this.clampRGB(y + (cb * 1.772) + 128);
     raster[index] = r;
     raster[index+1] = g;
     raster[index+2] = b;
