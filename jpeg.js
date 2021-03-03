@@ -97,8 +97,12 @@ class JPEG {
   readJfifHeader(buffer, index) {
     if (buffer.readUInt16BE(index) !== 0xFFE0)
       throw new Error("Invalid JFIF header (wrong marker)");
-    if (buffer.toString('binary', index+4, index+8) !== 'JFIF')
-      throw new Error("Invalid JFIF header (missing magic string)");
+    if (buffer.toString('binary', index+4, index+8) !== 'JFIF') {
+      /* This is not a JFIF header; however, this does not violate the JPEG spec,
+       * since an APP0 segment can be used by individual applications for anything
+       * they want */
+       return {};
+    }
 
     return {
       majorVersion: buffer[index+9],
