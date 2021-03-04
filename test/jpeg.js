@@ -61,3 +61,20 @@ assertArray(jpg.readBits(buf, 0, 1, 8), [1, 1, 0x26 << 1]);
 assertArray(jpg.readBits(buf, 1, 0, 4), [1, 4, 3]);
 assertArray(jpg.readBits(buf, 1, 1, 3), [1, 4, 3]);
 assertArray(jpg.readBits(buf, 1, 1, 7), [2, 0, 0x35]);
+
+/* Try decoding very simple JPEGs */
+const fs = require('fs');
+var [jpg1, raster1] = JPEG.fromBytes(fs.readFileSync(__dirname + '/8x8-black-GIMP-basic.jpg'));
+assertArray(Array.from(raster1), new Array(64 * 3).fill(0));
+
+var [jpg2, raster2] = JPEG.fromBytes(fs.readFileSync(__dirname + '/8x8-white-GIMP-basic.jpg'));
+assertArray(Array.from(raster2), new Array(64 * 3).fill(255));
+
+var array3 = new Array(64 * 3);
+for (var i = 0; i < 64*3; i += 3) {
+  array3[i] = 238;
+  array3[i+1] = 40;
+  array3[i+2] = 41;
+}
+var [jpg3, raster3] = JPEG.fromBytes(fs.readFileSync(__dirname + '/8x8-red-drawing.jpg'));
+assertArray(Array.from(raster3), array3);
