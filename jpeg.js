@@ -454,30 +454,7 @@ class JPEG {
             /* Some image components have different resolution from others; we need
              * to 'align' the corresponding samples in each image component before
              * performing the color space conversion */
-            blockIndex = 0;
-            const alignedSamples = new Array(3);
-            for (var i = 0; i < header.components.length; i++) {
-              const array = alignedSamples[i] = new Array(mcuPxWidth * mcuPxHeight);
-              const component = header.components[i];
-              const componentData = this.frameData.components[component.id-1];
-              const horizSampling = componentData.horizSampling;
-              const vertSampling  = componentData.vertSampling;
-              /* Iterate over blocks within the just-decoded MCU which carry data for this image component */
-              for (var blockY = 0; blockY < vertSampling; blockY++) {
-                for (var blockX = 0; blockX < horizSampling; blockX++) {
-                  const block  = samples[blockIndex++];
-                  const xScale = maxHorizSampling / horizSampling;
-                  const yScale = maxVertSampling  / vertSampling;
-                  const xShift = Math.log2(xScale);
-                  const yShift = Math.log2(yScale);
-                  for (var y = 0; y < 8 * yScale; y++) {
-                    for (var x = 0; x < 8 * xScale; x++) {
-                      array[(y + (blockY * 8 * yScale))*mcuPxWidth + (x + (blockX * 8 * xScale))] = block[(y >> yShift)*8 + (x >> xShift)];
-                    }
-                  }
-                }
-              }
-            }
+            const alignedSamples = this.alignSamples(header.components, samples, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling);
 
             for (var y = yStart; y < yStart + mcuPxHeight; y++) {
               for (var x = xStart; x < xStart + mcuPxWidth; x++) {
@@ -543,6 +520,39 @@ class JPEG {
       ff = ff + ff2 - searchIndex + 1; /* Position which 0xFF was just copied down to */
       searchIndex = ff2+2; /* Where next range of good bytes starts from */
     }
+  }
+
+  /* When different image components have a different resolution, take one MCU's
+   * worth of 8x8 blocks of samples and scale each component as needed so all are
+   * at the same resolution */
+  alignSamples(components, samples, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling) {
+    const result = new Array(components.length);
+
+    var blockIndex = 0;
+    for (var i = 0; i < components.length; i++) {
+      const array = result[i] = new Array(mcuPxWidth * mcuPxHeight);
+      const component = components[i];
+      const componentData = this.frameData.components[component.id-1];
+      const horizSampling = componentData.horizSampling;
+      const vertSampling  = componentData.vertSampling;
+      /* Iterate over blocks which carry data for this image component */
+      for (var blockY = 0; blockY < vertSampling; blockY++) {
+        for (var blockX = 0; blockX < horizSampling; blockX++) {
+          const block  = samples[blockIndex++];
+          const xScale = maxHorizSampling / horizSampling;
+          const yScale = maxVertSampling  / vertSampling;
+          const xShift = Math.log2(xScale);
+          const yShift = Math.log2(yScale);
+          for (var y = 0; y < 8 * yScale; y++) {
+            for (var x = 0; x < 8 * xScale; x++) {
+              array[(y + (blockY * 8 * yScale))*mcuPxWidth + (x + (blockX * 8 * xScale))] = block[(y >> yShift)*8 + (x >> xShift)];
+            }
+          }
+        }
+      }
+    }
+
+    return result;
   }
 
   /* Entropy coded segments */
