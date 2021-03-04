@@ -447,7 +447,7 @@ class JPEG {
             for (var y = yStart; y < yStart + 8; y++) {
               for (var x = xStart; x < xStart + 8; x++) {
                 const rasterIndex = ((y * this.frameData.width) + x) * 3;
-                this.convertYCrCbtoRGB(raster, rasterIndex, samples[0][y*8 + x], samples[1][y*8 + x], samples[2][y*8 + x]);
+                this.convertYCbCrtoRGB(raster, rasterIndex, samples[0][y*8 + x], samples[1][y*8 + x], samples[2][y*8 + x]);
               }
             }
           } else {
@@ -482,7 +482,7 @@ class JPEG {
             for (var y = yStart; y < yStart + mcuPxHeight; y++) {
               for (var x = xStart; x < xStart + mcuPxWidth; x++) {
                 const rasterIndex = ((y * this.frameData.width) + x) * 3;
-                this.convertYCrCbtoRGB(raster, rasterIndex, alignedSamples[0][y*mcuPxWidth + x], alignedSamples[1][y*mcuPxWidth + x], alignedSamples[2][y*mcuPxWidth + x]);
+                this.convertYCbCrtoRGB(raster, rasterIndex, alignedSamples[0][y*mcuPxWidth + x], alignedSamples[1][y*mcuPxWidth + x], alignedSamples[2][y*mcuPxWidth + x]);
               }
             }
           }
@@ -701,7 +701,7 @@ class JPEG {
 
   /* Color space conversion */
 
-  convertYCrCbtoRGB(raster, index, y, cr, cb) {
+  convertYCbCrtoRGB(raster, index, y, cb, cr) {
     /* Y-Cb-Cr conversion as defined in JFIF spec 1.02, page 4
      * Add 128 to each value to undo the 'level shift' which is applied as
      * the first step in JPEG encoding */
