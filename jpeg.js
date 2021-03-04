@@ -714,7 +714,7 @@ class JPEG {
   }
 
   clampRGB(value) {
-    return Math.min(Math.max(value, 0), 255);
+    return Math.round(Math.min(Math.max(value, 0), 255));
   }
 }
 
