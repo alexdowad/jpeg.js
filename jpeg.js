@@ -444,9 +444,9 @@ class JPEG {
         if (header.components.length == 3) {
           if (maxHorizSampling == 1 && maxVertSampling == 1) {
             /* All image components have the same resolution */
-            for (var y = yStart; y < yStart + 8; y++) {
-              for (var x = xStart; x < xStart + 8; x++) {
-                const rasterIndex = ((y * this.frameData.width) + x) * 3;
+            for (var y = 0; y < 8; y++) {
+              for (var x = 0; x < 8; x++) {
+                const rasterIndex = (((y + yStart) * this.frameData.width) + x + xStart) * 3;
                 this.convertYCbCrtoRGB(raster, rasterIndex, samples[0][y*8 + x], samples[1][y*8 + x], samples[2][y*8 + x]);
               }
             }
@@ -456,18 +456,18 @@ class JPEG {
              * performing the color space conversion */
             const alignedSamples = this.alignSamples(header.components, samples, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling);
 
-            for (var y = yStart; y < yStart + mcuPxHeight; y++) {
-              for (var x = xStart; x < xStart + mcuPxWidth; x++) {
-                const rasterIndex = ((y * this.frameData.width) + x) * 3;
+            for (var y = 0; y < mcuPxHeight; y++) {
+              for (var x = 0; x < mcuPxWidth; x++) {
+                const rasterIndex = (((y + yStart) * this.frameData.width) + x + xStart) * 3;
                 this.convertYCbCrtoRGB(raster, rasterIndex, alignedSamples[0][y*mcuPxWidth + x], alignedSamples[1][y*mcuPxWidth + x], alignedSamples[2][y*mcuPxWidth + x]);
               }
             }
           }
         } else if (header.components.length == 1) {
           /* Luminance-only (grayscale) color space */
-          for (var y = yStart; y < yStart + 8; y++) {
-            for (var x = xStart; x < xStart + 8; x++) {
-              const rasterIndex = ((y * this.frameData.width) + x) * 3;
+          for (var y = 0; y < 8; y++) {
+            for (var x = 0; x < 8; x++) {
+              const rasterIndex = (((y + yStart) * this.frameData.width) + x + xStart) * 3;
               raster[rasterIndex] = raster[rasterIndex+1] = raster[rasterIndex+2] = samples[0][y*8 + x];
             }
           }
