@@ -430,7 +430,7 @@ class JPEG {
               /* Entropy-coded data has been decoded to DCT (discrete cosine transform) coefficients;
                * Now convert those coefficients back to an array of color samples */
               dcCoefficient  = this.dequantizeDcCoefficient(dcCoefficient, quantTable);
-              acCoefficients = this.dequantizeAcCoefficients(this.inverseZigzagOrder(acCoefficients), quantTable);
+              acCoefficients = this.inverseZigzagOrder(this.dequantizeAcCoefficients(acCoefficients, quantTable));
               samples[blockIndex++] = this.inverseDCT(dcCoefficient, acCoefficients);
             }
           }
