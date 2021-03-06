@@ -62,7 +62,8 @@ assertArray(jpg.readBits(buf, 1, 0, 4), [1, 4, 3]);
 assertArray(jpg.readBits(buf, 1, 1, 3), [1, 4, 3]);
 assertArray(jpg.readBits(buf, 1, 1, 7), [2, 0, 0x35]);
 
-/* Try decoding very simple JPEGs */
+/* Try decoding very simple JPEGs
+ * The first ones are just solid colors */
 const fs = require('fs');
 var [jpg1, raster1] = JPEG.fromBytes(fs.readFileSync(__dirname + '/8x8-black-GIMP-basic.jpg'));
 assertArray(Array.from(raster1), new Array(64 * 3).fill(0));
@@ -78,3 +79,10 @@ for (var i = 0; i < 64*3; i += 3) {
 }
 var [jpg3, raster3] = JPEG.fromBytes(fs.readFileSync(__dirname + '/8x8-red-drawing.jpg'));
 assertArray(Array.from(raster3), array3);
+
+/* Then stripes of various widths */
+var array4 = [];
+for (var i = 0; i < 8; i++)
+  array4 = array4.concat([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 254, 254, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255]);
+var [jpg4, raster4] = JPEG.fromBytes(fs.readFileSync(__dirname + '/8x8-black-white-1.jpg'));
+assertArray(Array.from(raster4), array4);
