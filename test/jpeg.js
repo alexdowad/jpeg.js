@@ -10,11 +10,19 @@ function equals(a, b) {
   }
 }
 
+function describeDifference(array1, array2) {
+  if (array1.length != array2.length)
+    return `Length is different: ${array1.length} vs ${array2.length}`;
+  for (var i = 0; i < array1.length; i++)
+    if (!equals(array1[i], array2[i]))
+      return `Index ${i} is different: ${array1[i]} vs ${array2[i]}`;
+}
+
 function assertArray(actual, expected) {
   if (!Array.isArray(actual))
     throw new Error(`expected ${actual} to be an array`);
   if (!equals(actual, expected))
-    throw new Error(`expected ${actual} to be ${expected}`);
+    throw new Error(`expected ${actual} to be ${expected}. ${describeDifference(actual, expected)}`);
 }
 
 function assertEquals(a, b) {
