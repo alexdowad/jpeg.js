@@ -80,9 +80,19 @@ for (var i = 0; i < 64*3; i += 3) {
 var [jpg3, raster3] = JPEG.fromBytes(fs.readFileSync(__dirname + '/8x8-red-drawing.jpg'));
 assertArray(Array.from(raster3), array3);
 
-/* Then stripes of various widths */
+/* Then stripes of various widths
+ * First vertical stripes */
 var array4 = [];
 for (var i = 0; i < 8; i++)
   array4 = array4.concat([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 254, 254, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255]);
 var [jpg4, raster4] = JPEG.fromBytes(fs.readFileSync(__dirname + '/8x8-black-white-1.jpg'));
 assertArray(Array.from(raster4), array4);
+
+/* Horizontal stripes */
+var array5 = [];
+array5 = array5.concat(new Array(16*3).fill(255));
+array5 = array5.concat(new Array(16*3).fill(1));
+array5 = array5.concat(new Array(16*3).fill(255));
+array5 = array5.concat(new Array(16*3).fill(1));
+var [jpg5, raster5] = JPEG.fromBytes(fs.readFileSync(__dirname + '/8x8-black-white-2.jpg'));
+assertArray(Array.from(raster5), array5);
