@@ -104,3 +104,16 @@ array5 = array5.concat(new Array(16*3).fill(255));
 array5 = array5.concat(new Array(16*3).fill(1));
 var [jpg5, raster5] = JPEG.fromBytes(fs.readFileSync(__dirname + '/8x8-black-white-2.jpg'));
 assertArray(Array.from(raster5), array5);
+
+/* 16x16 with 4 colors */
+var array6 = [];
+for (var i = 0; i < 8; i++)
+  array6 = array6.concat([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 241, 15, 39,
+    241, 15, 39, 241, 15, 39, 241, 15, 39, 241, 15, 39, 241, 15, 39, 241, 15, 39, 241, 15, 39]);
+for (var i = 0; i < 8; i++)
+  array6 = array6.concat([255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 1, 1, 223, 1, 1, 223, 1, 1, 223, 1, 1, 223, 1, 1, 223, 1, 1, 223, 1, 1, 223, 1, 1, 223]);
+var [jpg6, raster6] = JPEG.fromBytes(fs.readFileSync(__dirname + '/16x16-four-colors.jpg'));
+assertArray(Array.from(raster6), array6);
+
+console.log("OK!");
