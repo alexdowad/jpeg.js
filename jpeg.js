@@ -693,10 +693,13 @@ class JPEG {
         var sample = 0;
 
         for (var u = 0; u < 8; u++) {
-          const cu = (u == 0) ? (1 / Math.sqrt(2)) : 1;
+          const cu = (u === 0) ? (1 / Math.sqrt(2)) : 1;
           for (var v = 0; v < 8; v++) {
-            const cv = (v == 0) ? (1 / Math.sqrt(2)) : 1;
-            sample += cu * cv * coefficients[v*8 + u] *
+            const cv = (v === 0) ? (1 / Math.sqrt(2)) : 1;
+            var coefficient = coefficients[v*8 + u];
+            if (coefficient === 0)
+              continue;
+            sample += cu * cv * coefficient *
               Math.cos(Math.PI * u * (2*x + 1) / 16) *
               Math.cos(Math.PI * v * (2*y + 1) / 16);
           }
