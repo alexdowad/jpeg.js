@@ -419,10 +419,10 @@ class JPEG {
           const dcDecoder   = this.dcDecoders[component.dcTable];
           const acDecoder   = this.acDecoders[component.acTable];
           const quantTable  = this.quantTables[this.frameData.components[component.id-1].quantTable].values;
-          const prevDcCoeff = prevDcCoeffs[componentIndex];
 
           for (var i = 0; i < vertBlocks; i++) {
             for (var j = 0; j < horizBlocks; j++) {
+              const prevDcCoeff = prevDcCoeffs[componentIndex];
               var dcCoefficient, acCoefficients;
               [bytePos, bitPos, dcCoefficient, acCoefficients] = this.readSampleBlock(ecs, bytePos, bitPos, ecs.length, prevDcCoeff, dcDecoder, acDecoder);
               prevDcCoeffs[componentIndex] = dcCoefficient;
