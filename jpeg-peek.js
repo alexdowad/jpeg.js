@@ -11,8 +11,8 @@ const data = fs.readFileSync(filename);
 
 const [jpg, raster] = JPEG.fromBytes(data);
 
-const displayWidth = Math.min(jpg.frameData.width, 80);
-const displayHeight = Math.min(jpg.frameData.height, 30);
+const displayWidth = Math.min(jpg.frameData.width, process.stdout.columns || 80);
+const displayHeight = Math.min(jpg.frameData.height, process.stdout.rows-1 || 30);
 
 for (var y = 0; y < displayHeight; y++) {
   for (var x = 0; x < displayWidth; x++) {
