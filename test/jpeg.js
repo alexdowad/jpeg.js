@@ -187,4 +187,17 @@ var array7 = [
 var [jpg7, raster7] = JPEG.fromBytes(fs.readFileSync(__dirname + '/16x16-different-sampling-factor.jpg'));
 assertArray(Array.from(raster7), array7);
 
+/* Same image, but 13x13
+ * See if JPEG decoding works for images with resolution which is not a multiple of 8 */
+var array8 = new Array(13*13*3);
+for (var i = 0; i < 13; i++) {
+  for (var j = 0; j < 13; j++) {
+    for (var k = 0; k < 3; k++) {
+      array8[i*13*3 + j*3 + k] = array7[i*16*3 + j*3 + k];
+    }
+  }
+}
+var [jpg8, raster8] = JPEG.fromBytes(fs.readFileSync(__dirname + '/13x13-four-colors.jpg'));
+assertArray(Array.from(raster8), array8);
+
 console.log("OK!");
