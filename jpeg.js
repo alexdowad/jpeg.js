@@ -442,12 +442,14 @@ class JPEG {
          * First figure out where in the raster these pixels are located */
         const xStart = (mcuNumber % Math.ceil(this.frameData.width / mcuPxWidth)) * mcuPxWidth;
         const yStart = Math.floor(mcuNumber / Math.ceil(this.frameData.width / mcuPxWidth)) * mcuPxHeight;
+        const xEnd   = Math.min(xStart + mcuPxWidth, this.frameData.width);
+        const yEnd   = Math.min(yStart + mcuPxHeight, this.frameData.height);
 
         if (header.components.length == 3) {
           if (maxHorizSampling == 1 && maxVertSampling == 1) {
             /* All image components have the same resolution */
-            for (var y = 0; y < 8; y++) {
-              for (var x = 0; x < 8; x++) {
+            for (var y = 0; y < yEnd - yStart; y++) {
+              for (var x = 0; x < xEnd - xStart; x++) {
                 const rasterIndex = (((y + yStart) * this.frameData.width) + x + xStart) * 3;
                 this.convertYCbCrtoRGB(raster, rasterIndex, samples[0][y*8 + x], samples[1][y*8 + x], samples[2][y*8 + x]);
               }
@@ -467,8 +469,8 @@ class JPEG {
              * from 8x8 pixels. This is perhaps a smarter way to scale the 8x8 block up. */
             const alignedSamples = this.alignSamples(header.components, samples, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling);
 
-            for (var y = 0; y < mcuPxHeight; y++) {
-              for (var x = 0; x < mcuPxWidth; x++) {
+            for (var y = 0; y < yEnd - yStart; y++) {
+              for (var x = 0; x < xEnd - xStart; x++) {
                 const rasterIndex = (((y + yStart) * this.frameData.width) + x + xStart) * 3;
                 this.convertYCbCrtoRGB(raster, rasterIndex, alignedSamples[0][y*mcuPxWidth + x], alignedSamples[1][y*mcuPxWidth + x], alignedSamples[2][y*mcuPxWidth + x]);
               }
@@ -476,8 +478,8 @@ class JPEG {
           }
         } else if (header.components.length == 1) {
           /* Luminance-only (grayscale) color space */
-          for (var y = 0; y < 8; y++) {
-            for (var x = 0; x < 8; x++) {
+          for (var y = 0; y < yEnd - yStart; y++) {
+            for (var x = 0; x < xEnd - xStart; x++) {
               const rasterIndex = (((y + yStart) * this.frameData.width) + x + xStart) * 3;
               /* No need for any fancy conversion; R, G, and B are all equal to Y */
               raster[rasterIndex] = raster[rasterIndex+1] = raster[rasterIndex+2] = samples[0][y*8 + x];
