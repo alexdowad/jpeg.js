@@ -36,6 +36,8 @@ class JPEG {
     [0xDD, 'Define Restart Interval'],
     [0xE0, 'Application-Specific (JFIF header)'],
     [0xE1, 'Application-Specific (EXIF header)'],
+    [0xE2, 'Application-Specific (ICC color profile)'],
+    [0xEE, 'Application-Specific (Adobe color encoding)'],
     [0xFE, 'Comment']
   ]);
 
