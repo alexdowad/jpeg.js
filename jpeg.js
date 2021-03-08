@@ -482,7 +482,7 @@ class JPEG {
             for (var x = 0; x < xEnd - xStart; x++) {
               const rasterIndex = (((y + yStart) * this.frameData.width) + x + xStart) * 3;
               /* No need for any fancy conversion; R, G, and B are all equal to Y */
-              raster[rasterIndex] = raster[rasterIndex+1] = raster[rasterIndex+2] = samples[0][y*8 + x];
+              raster[rasterIndex] = raster[rasterIndex+1] = raster[rasterIndex+2] = samples[0][y*8 + x] + 128;
             }
           }
         } else {
