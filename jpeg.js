@@ -451,9 +451,18 @@ class JPEG {
               }
             }
           } else {
-            /* Some image components have different resolution from others; we need
-             * to 'align' the corresponding samples in each image component before
-             * performing the color space conversion */
+            /* Some image components have different resolution from others; we need to
+             * 'align' the corresponding samples in each image component before performing
+             * the color space conversion. This may, for example, require taking each sample
+             * from a lower-resolution component and scaling it up to become a 2x2 square of
+             * 4 identical samples.
+             *
+             * This is different from what libjpeg does. If, for example, one image component
+             * is sampled at double the X and Y resolution of another, so 8x8 samples of the
+             * low-resolution component must be matched to 16x16 samples of the high-resolution
+             * component, libjpeg actually evaluates the IDCT at 16x16 points (for the low
+             * resolution component only), even though the coefficients were originally derived
+             * from 8x8 pixels. This is perhaps a smarter way to scale the 8x8 block up. */
             const alignedSamples = this.alignSamples(header.components, samples, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling);
 
             for (var y = 0; y < mcuPxHeight; y++) {
@@ -468,6 +477,7 @@ class JPEG {
           for (var y = 0; y < 8; y++) {
             for (var x = 0; x < 8; x++) {
               const rasterIndex = (((y + yStart) * this.frameData.width) + x + xStart) * 3;
+              /* No need for any fancy conversion; R, G, and B are all equal to Y */
               raster[rasterIndex] = raster[rasterIndex+1] = raster[rasterIndex+2] = samples[0][y*8 + x];
             }
           }
