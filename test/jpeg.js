@@ -249,4 +249,8 @@ var array9 = [
 var [jpg9, raster9] = JPEG.fromBytes(fs.readFileSync(__dirname + '/13x13-grayscale.jpg'));
 assertArray(Array.from(raster9), array9);
 
+/* Using restart markers */
+var [jpg10, raster10] = JPEG.fromBytes(fs.readFileSync(__dirname + '/16x16-restart-markers.jpg'));
+assertArray(Array.from(raster10), array6); /* Contents of image are same as #6 */
+
 console.log("OK!");
