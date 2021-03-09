@@ -54,6 +54,11 @@ while (true) {
       jpg.dumpQuantizationSegment(data, i);
       break;
 
+    case 0xDD: /* Define Restart Interval */
+      console.log(`${offset}: Define Restart Interval`);
+      jpg.dumpRestartInterval(data, i);
+      break;
+
     case 0xE0: /* JFIF header */
       console.log(`${offset}: JFIF header`);
       jpg.dumpJfifHeader(data, i);

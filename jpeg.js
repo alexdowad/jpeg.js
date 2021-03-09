@@ -79,6 +79,10 @@ class JPEG {
         case 0xDA:
           const raster = jpg.readBaselineScan(buffer, i);
           return [jpg, raster];
+
+        case 0xDD:
+          jpg.handleRestartInterval(buffer, i);
+          break;
       }
     }
 
@@ -92,6 +96,7 @@ class JPEG {
     this.acDecoders = [];
     this.quantTables = [];
     this.frameData = undefined;
+    this.restartInterval = 0; /* TODO: should be reset to zero on 'Start of Image' marker */
   }
 
   /* JFIF/EXIF file header */
@@ -183,6 +188,16 @@ class JPEG {
 
   handleFrameHeader(buffer, index) {
     this.frameData = this.readFrameHeader(buffer, index);
+  }
+
+  dumpRestartInterval(buffer, index) {
+    console.group();
+    console.log(`Restart interval: ${buffer.readUInt16BE(index+4)} MCUs`);
+    console.groupEnd();
+  }
+
+  handleRestartInterval(buffer, index) {
+    this.restartInterval = buffer.readUInt16BE(index+4);
   }
 
   /* Huffman Tables */
@@ -386,7 +401,12 @@ class JPEG {
     const samples = new Array(blocksPerMcu);
     const mcuPxWidth = 8 * maxHorizSampling;
     const mcuPxHeight = 8 * maxVertSampling;
-    const expectedMcus = Math.ceil(this.frameData.width / mcuPxWidth) * Math.ceil(this.frameData.height / mcuPxHeight);
+
+    /* If a restart interval has been defined, each ECS should contain the specified
+     * number of MCUs. Otherwise, it should be enough MCUs to complete the image */
+    const mcusPerSegment = this.restartInterval || Math.ceil(this.frameData.width / mcuPxWidth) * Math.ceil(this.frameData.height / mcuPxHeight);
+
+    var mcuNumber = 0;
 
     /* Decode any number of entropy-coded segments delimited by restart markers */
     while (true) {
@@ -402,13 +422,15 @@ class JPEG {
       buffer.copy(ecs, 0, index, ecsEnd);
       this.removeByteStuffing(ecs);
 
+      const expectedMcus = mcuNumber + mcusPerSegment;
+
       /* For each image component, we need to track the last DC coefficient seen within
        * the current scan; it is used to help calculate the next DC coefficient */
       var prevDcCoeffs = new Array(header.components.length).fill(0);
 
       /* Decode enough blocks to form a complete MCU, then enter the pixel values in `raster`
        * Then start again on the next MCU, until we reach the end of this ECS */
-      var bytePos = 0, bitPos = 0, mcuNumber = 0;
+      var bytePos = 0, bitPos = 0;
       while (mcuNumber < expectedMcus && bytePos < ecs.length) {
         var blockIndex = 0;
 
