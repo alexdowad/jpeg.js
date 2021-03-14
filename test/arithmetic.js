@@ -1,6 +1,6 @@
 'use strict'
 
-const { ArithmeticCoder } = require("../arithmetic.js");
+const { ArithmeticCoder, ArithmeticDecoder } = require("../arithmetic.js");
 
 function equals(a, b) {
   if (Array.isArray(a)) {
@@ -17,6 +17,11 @@ function assertArray(actual, expected) {
     throw new Error(`expected ${actual} to be an array`);
   if (!equals(actual, expected))
     throw new Error(`expected ${actual} to be ${expected}`);
+}
+
+function assertEquals(a, b) {
+  if (a !== b)
+    throw new Error(`expected ${a} to === ${b}`);
 }
 
 /* Test sequence from JPEG spec, K.4.1 */
@@ -36,5 +41,17 @@ const expected1 = [
 ];
 
 assertArray(result1, expected1);
+
+
+/* Feed the encoder output into the decoder */
+const decoder1 = new ArithmeticDecoder(1, result1);
+assertEquals(decoder1.decodeUInt(32, 0), 0x00020051);
+assertEquals(decoder1.decodeUInt(32, 0), 0x000000C0);
+assertEquals(decoder1.decodeUInt(32, 0), 0x0352872A);
+assertEquals(decoder1.decodeUInt(32, 0), 0xAAAAAAAA);
+assertEquals(decoder1.decodeUInt(32, 0), 0x82C02000);
+assertEquals(decoder1.decodeUInt(32, 0), 0xFCD79EF6);
+assertEquals(decoder1.decodeUInt(32, 0), 0x74EAABF7);
+assertEquals(decoder1.decodeUInt(32, 0), 0x697EE74C);
 
 console.log('OK!');

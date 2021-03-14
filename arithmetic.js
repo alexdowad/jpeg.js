@@ -365,4 +365,106 @@ class ArithmeticCoder {
   }
 }
 
+/* Do the same stuff as `ArithmeticCoder`... backwards
+ * See comments in `ArithmeticCoder` to understand the algorithm */
+class ArithmeticDecoder {
+  constructor(nContexts, input) {
+    this.intervalBase = 0;
+    this.intervalSize = 0x10000;
+    this.neededBits = 0;
+    this.moreProbableSymbol = false;
+    this.states = new Array(nContexts).fill(0);
+    this.input = input;
+
+    /* Prime the pipeline */
+    this.consumeInputByte();
+    this.intervalBase <<= 8;
+    this.consumeInputByte();
+    this.intervalBase <<= 8;
+  }
+
+  decodeDecision(context) {
+    var result;
+    const state = ArithmeticCoder.stateTable[this.states[context]];
+
+    this.intervalSize -= state.probability;
+
+    if ((this.intervalBase >>> 16) < this.intervalSize) {
+      if (this.intervalSize < 0x8000) {
+        if (this.intervalSize < state.probability) {
+          result = !this.moreProbableSymbol;
+          if (state.swapMPS) {
+            this.moreProbableSymbol = !this.moreProbableSymbol;
+          }
+          this.states[context] = state.nextLPS;
+        } else {
+          result = this.moreProbableSymbol;
+          this.states[context] = state.nextMPS;
+        }
+      } else {
+        return this.moreProbableSymbol;
+      }
+    } else {
+      if (this.intervalSize < state.probability) {
+        result = this.moreProbableSymbol;
+        this.states[context] = state.nextMPS;
+      } else {
+        result = !this.moreProbableSymbol;
+        if (state.swapMPS) {
+          this.moreProbableSymbol = !this.moreProbableSymbol;
+        }
+        this.states[context] = state.nextLPS;
+      }
+
+      this.intervalBase -= (this.intervalSize << 16);
+      this.intervalSize = state.probability;
+    }
+
+    do {
+      if (this.neededBits === 0) {
+        this.consumeInputByte();
+        this.neededBits = 8;
+      }
+
+      this.intervalSize <<= 1;
+      this.intervalBase <<= 1;
+      this.neededBits--;
+    } while (this.intervalSize < 0x8000);
+
+    return result;
+  }
+
+  decodeUInt(nBits, context) {
+    if (nBits < 0 || nBits > 32)
+      throw new Error("An unsigned integer must have 0-32 bits");
+    var uint = 0;
+    while (nBits--) {
+      if (this.decodeDecision(context))
+        uint |= (1 << nBits);
+    }
+    return uint >>> 0; /* Convert to unsigned integer */
+  }
+
+  consumeInputByte() {
+    if (this.input.length === 0) {
+      /* We have reached the end of the input data
+       * Act as if the input is padded with zeroes */
+      return;
+    }
+    const inputByte = this.input.shift();
+
+    if (inputByte === 0xFF) {
+      const nextByte = this.input.shift();
+      if (nextByte === 0) {
+        this.intervalBase |= 0xFF00;
+      } else {
+        throw new Error("0xFF byte not properly stuffed");
+      }
+    } else {
+      this.intervalBase += (inputByte << 8);
+    }
+  }
+}
+
 module.exports.ArithmeticCoder = ArithmeticCoder;
+module.exports.ArithmeticDecoder = ArithmeticDecoder;
