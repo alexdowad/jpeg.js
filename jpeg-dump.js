@@ -44,6 +44,11 @@ while (true) {
       jpg.dumpHuffmanSegment(data, i);
       break;
 
+    case 0xCC: /* Arithmetic coding conditioning tables */
+      console.log(`${offset}: Arithmetic coding conditioning tables`);
+      jpg.dumpConditioningSegment(data, i);
+      break;
+
     case 0xDA: /* Start of Scan */
       console.log(`${offset}: Start of Scan`);
       jpg.dumpScanHeader(data, i);

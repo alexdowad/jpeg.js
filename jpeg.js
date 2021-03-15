@@ -16,7 +16,7 @@ class JPEG {
     [0xC9, 'Start of Frame (extended sequential DCT, arithmetic-coded)'],
     [0xCA, 'Start of Frame (progressive DCT, arithmetic-coded)'],
     [0xCB, 'Start of Frame (lossless sequential, arithmetic-coded'],
-    [0xCC, 'Define Arithmetic Coding Conditionings'],
+    [0xCC, 'Define Arithmetic Coding Conditioning Tables'],
     [0xCD, 'Start of Frame (differential sequential DCT, arithmetic-coded)'],
     [0xCE, 'Start of Frame (differential progressive DCT, arithmetic-coded)'],
     [0xCF, 'Start of Frame (differential lossless sequential, arithmetic-coded)'],
@@ -262,6 +262,56 @@ class JPEG {
       console.log(table.codes);
       console.groupEnd();
       index = table.end;
+    }
+  }
+
+  /* Arithmetic Conditioning Tables
+   * For JPEGs which use arithmetic coding to compress the DCT coefficients
+   * (The vast majority of JPEG files use Huffman coding) */
+
+  readConditioningTable(buffer, index) {
+    /* 1 byte for table properties */
+    const tableClass  = buffer[index] >> 4; /* 0 is DC, 1 is AC */
+    const tableNumber = buffer[index] & 0xF;
+    /* Arithmetic coding just requires one 6-bit value for each AC 'table' and
+     * 2 4-bit values for each DC 'table'. Everything else that is needed is
+     * built in to the arithmetic decoder and its state machine. */
+    const value = buffer[index+1];
+    return { type: tableClass, number: tableNumber, value: value };
+  }
+
+  handleConditioningSegment(buffer, index) {
+    if (buffer.readUInt16BE(index) !== 0xFFCC)
+      throw new Error("Invalid arithmetic conditioning segment (wrong marker)");
+    const length = buffer.readUInt16BE(index+2);
+    const end    = index + length;
+
+    index += 4;
+    while (index < end) {
+      const table = this.readConditioningTable(buffer, index);
+      if (table.type)
+        this.acTables[table.number] = table;
+      else
+        this.dcTables[table.number] = table;
+      index += 2;
+    }
+  }
+
+  dumpConditioningSegment(buffer, index) {
+    const length = buffer.readUInt16BE(index+2);
+    const end    = index + length;
+
+    index += 4;
+    while (index < end) {
+      const table = this.readConditioningTable(buffer, index);
+      console.group();
+      console.log(`Arithmetic conditioning table class: ${table.type ? 'AC' : 'DC'}, Number: ${table.number}`);
+      if (table.type)
+        console.log(`Kx: ${table.value}`);
+      else
+        console.log(`U: ${table.value >> 4} L: ${table.value & 0xF}`);
+      console.groupEnd();
+      index += 2;
     }
   }
 
