@@ -420,16 +420,7 @@ class ArithmeticDecoder {
       this.intervalSize = state.probability;
     }
 
-    do {
-      if (this.neededBits === 0) {
-        this.consumeInputByte();
-        this.neededBits = 8;
-      }
-
-      this.intervalSize <<= 1;
-      this.intervalBase <<= 1;
-      this.neededBits--;
-    } while (this.intervalSize < 0x8000);
+    this.renormalize();
 
     return result;
   }
@@ -463,6 +454,19 @@ class ArithmeticDecoder {
     } else {
       this.intervalBase += (inputByte << 8);
     }
+  }
+
+  renormalize() {
+    do {
+      if (this.neededBits === 0) {
+        this.consumeInputByte();
+        this.neededBits = 8;
+      }
+
+      this.intervalSize <<= 1;
+      this.intervalBase <<= 1;
+      this.neededBits--;
+    } while (this.intervalSize < 0x8000);
   }
 }
 
