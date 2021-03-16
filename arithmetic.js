@@ -65,7 +65,7 @@ class ArithmeticCoder {
     this.neededBits = 11;
 
     /* Which boolean value do we believe is more likely to be encoded next? */
-    this.moreProbableSymbol = false;
+    this.moreProbableSymbol = new Array(nContexts).fill(false);
 
     /* Indexes into state table, which is used to estimate the probability
      * of getting the LPS next */
@@ -201,7 +201,7 @@ class ArithmeticCoder {
      * (In fixed-point representation, where 0x8000 means 75%. It should
      * always be less than 0x5555 or 50%.) */
 
-    if (bit === this.moreProbableSymbol) {
+    if (bit === this.moreProbableSymbol[context]) {
       this.encodeMPS(state.probability, state, context);
     } else {
       this.encodeLPS(state.probability, state, context);
@@ -271,7 +271,7 @@ class ArithmeticCoder {
        * Note that we never toggle `moreProbableSymbol` as long as the same,
        * expected bit keeps appearing. Only when the state machine guesses
        * wrong, do we consider guessing differently next time. */
-      this.moreProbableSymbol = !this.moreProbableSymbol;
+      this.moreProbableSymbol[context] = !this.moreProbableSymbol[context];
     }
 
     this.renormalize();
@@ -372,7 +372,7 @@ class ArithmeticDecoder {
     this.intervalBase = 0;
     this.intervalSize = 0x10000;
     this.neededBits = 0;
-    this.moreProbableSymbol = false;
+    this.moreProbableSymbol = new Array(nContexts).fill(false);
     this.states = new Array(nContexts).fill(0);
     this.input = input;
 
@@ -392,26 +392,26 @@ class ArithmeticDecoder {
     if ((this.intervalBase >>> 16) < this.intervalSize) {
       if (this.intervalSize < 0x8000) {
         if (this.intervalSize < state.probability) {
-          result = !this.moreProbableSymbol;
+          result = !this.moreProbableSymbol[context];
           if (state.swapMPS) {
-            this.moreProbableSymbol = !this.moreProbableSymbol;
+            this.moreProbableSymbol[context] = !this.moreProbableSymbol[context];
           }
           this.states[context] = state.nextLPS;
         } else {
-          result = this.moreProbableSymbol;
+          result = this.moreProbableSymbol[context];
           this.states[context] = state.nextMPS;
         }
       } else {
-        return this.moreProbableSymbol;
+        return this.moreProbableSymbol[context];
       }
     } else {
       if (this.intervalSize < state.probability) {
-        result = this.moreProbableSymbol;
+        result = this.moreProbableSymbol[context];
         this.states[context] = state.nextMPS;
       } else {
-        result = !this.moreProbableSymbol;
+        result = !this.moreProbableSymbol[context];
         if (state.swapMPS) {
-          this.moreProbableSymbol = !this.moreProbableSymbol;
+          this.moreProbableSymbol[context] = !this.moreProbableSymbol[context];
         }
         this.states[context] = state.nextLPS;
       }
