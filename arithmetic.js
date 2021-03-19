@@ -194,31 +194,51 @@ class ArithmeticCoder {
   /* `bit` -> the bit to encode (as a boolean)
    * `context` -> zero-based integer, representing the type of input data which
    *              this bit represents (see comments at beginning of file) */
-  encodeDecision(bit, context) {
+  encodeBit(bit, context) {
     const state = ArithmeticCoder.stateTable[this.states[context]];
 
     /* `state.probability` is the estimated probability of getting the LPS
      * (In fixed-point representation, where 0x8000 means 75%. It should
      * always be less than 0x5555 or 50%.) */
 
-    if (bit === this.moreProbableSymbol[context]) {
-      this.encodeMPS(state.probability, state, context);
-    } else {
-      this.encodeLPS(state.probability, state, context);
+    const mps = this.moreProbableSymbol[context];
+    const [nextState, swapMPS] = this.encodeDecision(bit, mps, state.probability, state.nextMPS, state.nextLPS, state.swapMPS);
+
+    if (nextState) {
+      this.states[context] = nextState;
+    }
+    if (swapMPS) {
+      /* Our state machine is telling us that the most likely bit to appear
+       * next is the opposite of what we _thought_ was more likely this time.
+       *
+       * Note that we never toggle `moreProbableSymbol` as long as the same,
+       * expected bit keeps appearing. Only when the state machine guesses
+       * wrong, do we consider guessing differently next time. */
+      this.moreProbableSymbol[context] = !mps;
     }
   }
 
-  /* Wrapper around `encodeDecision`.
+  /* Wrapper around `encodeBit`.
    * Encode N low-order bits, starting from most significant end */
   encodeUInt(uint, nBits, context) {
     if (nBits < 0 || nBits > 32)
       throw new Error("An unsigned integer must have 0-32 bits");
     while (nBits--) {
-      this.encodeDecision((uint & (1 << nBits)) !== 0, context);
+      this.encodeBit((uint & (1 << nBits)) !== 0, context);
     }
   }
 
-  encodeMPS(probability, state, context) {
+  encodeDecision(bit, mps, probability, nextStateMPS, nextStateLPS, swapMPS) {
+    if (bit === mps) {
+      const transition = this.encodeMPS(probability);
+      return [transition && nextStateMPS, false];
+    } else {
+      this.encodeLPS(probability);
+      return [nextStateLPS, swapMPS]; /* Always transition to new state after LPS */
+    }
+  }
+
+  encodeMPS(probability) {
     /* Mathematically correct would be: (this.intervalSize * (1 - probability)),
      * along with a suitable right-shift to compensate for the use of fixed point
      * (See above comments about 'rough calculations') */
@@ -241,11 +261,11 @@ class ArithmeticCoder {
       }
 
       this.renormalize();
-      this.states[context] = state.nextMPS;
+      return true; /* Transition to new state */
     }
   }
 
-  encodeLPS(probability, state, context) {
+  encodeLPS(probability) {
     if (this.intervalSize - probability < probability) {
       /* As above, swap sub-intervals so the one closer to zero represents the
        * LPS instead of the MPS. Since we are in `encodeLPS`, this means we don't
@@ -264,18 +284,7 @@ class ArithmeticCoder {
       this.intervalSize = probability;
     }
 
-    if (state.swapMPS) {
-      /* Our state machine is telling us that the most likely bit to appear
-       * next is the opposite of what we _thought_ was more likely this time.
-       *
-       * Note that we never toggle `moreProbableSymbol` as long as the same,
-       * expected bit keeps appearing. Only when the state machine guesses
-       * wrong, do we consider guessing differently next time. */
-      this.moreProbableSymbol[context] = !this.moreProbableSymbol[context];
-    }
-
     this.renormalize();
-    this.states[context] = state.nextLPS;
   }
 
   renormalize() {
