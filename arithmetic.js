@@ -392,46 +392,42 @@ class ArithmeticDecoder {
     this.intervalBase <<= 8;
   }
 
-  decodeDecision(context) {
-    var result;
+  decodeBit(context) {
     const state = ArithmeticCoder.stateTable[this.states[context]];
+    const mps = this.moreProbableSymbol[context];
+    const [result, nextState, swapMPS] = this.decodeDecision(state.probability, mps, state.nextMPS, state.nextLPS, state.swapMPS);
 
-    this.intervalSize -= state.probability;
+    if (nextState) {
+      this.states[context] = nextState;
+    }
+    if (swapMPS) {
+      this.moreProbableSymbol[context] = !mps;
+    }
+
+    return result;
+  }
+
+  decodeDecision(probability, mps, nextStateMPS, nextStateLPS, swapMPS) {
+    var result;
+
+    this.intervalSize -= probability;
 
     if ((this.intervalBase >>> 16) < this.intervalSize) {
       if (this.intervalSize < 0x8000) {
-        if (this.intervalSize < state.probability) {
-          result = !this.moreProbableSymbol[context];
-          if (state.swapMPS) {
-            this.moreProbableSymbol[context] = !this.moreProbableSymbol[context];
-          }
-          this.states[context] = state.nextLPS;
-        } else {
-          result = this.moreProbableSymbol[context];
-          this.states[context] = state.nextMPS;
-        }
+        result = Boolean((this.intervalSize < probability) ^ mps);
       } else {
-        return this.moreProbableSymbol[context];
+        return [mps, null, false];
       }
     } else {
-      if (this.intervalSize < state.probability) {
-        result = this.moreProbableSymbol[context];
-        this.states[context] = state.nextMPS;
-      } else {
-        result = !this.moreProbableSymbol[context];
-        if (state.swapMPS) {
-          this.moreProbableSymbol[context] = !this.moreProbableSymbol[context];
-        }
-        this.states[context] = state.nextLPS;
-      }
-
+      result = Boolean((this.intervalSize >= probability) ^ mps);
       this.intervalBase -= (this.intervalSize << 16);
-      this.intervalSize = state.probability;
+      this.intervalSize = probability;
     }
 
     this.renormalize();
 
-    return result;
+    const nextState = (result === mps) ? nextStateMPS : nextStateLPS
+    return [result, nextState, (result !== mps) && swapMPS];
   }
 
   decodeUInt(nBits, context) {
@@ -439,7 +435,7 @@ class ArithmeticDecoder {
       throw new Error("An unsigned integer must have 0-32 bits");
     var uint = 0;
     while (nBits--) {
-      if (this.decodeDecision(context))
+      if (this.decodeBit(context))
         uint |= (1 << nBits);
     }
     return uint >>> 0; /* Convert to unsigned integer */
