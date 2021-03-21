@@ -498,7 +498,7 @@ class JPEG {
             for (var j = 0; j < horizBlocks; j++) {
               const prevDcCoeff = prevDcCoeffs[componentIndex];
               var dcCoefficient, acCoefficients;
-              [bytePos, bitPos, dcCoefficient, acCoefficients] = this.readSampleBlock(ecs, bytePos, bitPos, ecs.length, prevDcCoeff, dcDecoder, acDecoder);
+              [bytePos, bitPos, dcCoefficient, acCoefficients] = this.readHuffmanSampleBlock(ecs, bytePos, bitPos, ecs.length, prevDcCoeff, dcDecoder, acDecoder);
               prevDcCoeffs[componentIndex] = dcCoefficient;
 
               /* Entropy-coded data has been decoded to DCT (discrete cosine transform) coefficients;
@@ -643,8 +643,7 @@ class JPEG {
 
   /* Entropy coded segments */
 
-  /* This is only for Huffman-encoded blocks! */
-  readSampleBlock(buffer, index, bitIndex, end, prevDcCoeff, dcDecoder, acDecoder) {
+  readHuffmanSampleBlock(buffer, index, bitIndex, end, prevDcCoeff, dcDecoder, acDecoder) {
     /* First find the DC coefficient for this 8x8 block of samples
      *
      * It is encoded as a 'magnitude category' (which is entropy-coded)
