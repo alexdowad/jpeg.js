@@ -1,6 +1,7 @@
 'use strict'
 
 const huffman = require('./huffman.js');
+const arithmetic = require('./arithmetic.js');
 
 class JPEG {
   /* In a JPEG file, any byte which follows 0xFF is a marker */
@@ -70,6 +71,10 @@ class JPEG {
 
         case 0xC4:
           jpg.handleHuffmanSegment(buffer, i);
+          break;
+
+        case 0xCC:
+          jpg.handleConditioningSegment(buffer, i);
           break;
 
         case 0xDB:
@@ -478,7 +483,11 @@ class JPEG {
       this.removeByteStuffing(ecs);
 
       /* Decode entropy-coded data in this ECS, convert to pixel values, and enter in `raster` */
-      mcuNumber = this.readHuffmanCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + mcusPerSegment, blocksPerMcu, maxHorizSampling, maxVertSampling);
+      if (this.frameData.coding === 'huffman') {
+        mcuNumber = this.readHuffmanCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + mcusPerSegment, blocksPerMcu, maxHorizSampling, maxVertSampling);
+      } else {
+        mcuNumber = this.readArithmeticCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + mcusPerSegment, blocksPerMcu, maxHorizSampling, maxVertSampling);
+      }
 
       if (buffer[ecsEnd+1] >= 0xD0 && buffer[ecsEnd+1] <= 0xD7) {
         /* Restart marker; continue decoding the scan data
@@ -538,6 +547,53 @@ class JPEG {
       }
 
       /* Got one whole MCU, now convert samples to RGB color space and fill in raster */
+      this.paintPixels(raster, samples, header.components, nextMcu, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling);
+      nextMcu++;
+    }
+
+    return nextMcu;
+  }
+
+  readArithmeticCodedSegment(raster, header, ecs, nextMcu, lastMcu, blocksPerMcu, maxHorizSampling, maxVertSampling) {
+    /* See comments on `readHuffmanCodedSegment` */
+    const mcuPxWidth = 8 * maxHorizSampling;
+    const mcuPxHeight = 8 * maxVertSampling;
+    const samples = new Array(blocksPerMcu);
+
+    const prevDcCoeffs = new Array(header.components.length).fill(0);
+    const prevDcDeltas = new Array(header.components.length).fill(0);
+
+    /* JPEG spec requires 49 'bins' for probability estimates used when encoding/decoding
+     * DC coefficients (per DC conditioning table), and 245 'bin's for AC coefficients
+     * (per AC conditioning table) */
+    const decoder = new arithmetic.Decoder((49 * this.dcTables.length) + (245 * this.acTables.length), Array.from(ecs));
+
+    while (nextMcu < lastMcu) {
+      var blockIndex = 0;
+
+      for (var componentIndex = 0; componentIndex < header.components.length; componentIndex++) {
+        const component   = header.components[componentIndex];
+        const horizBlocks = this.frameData.components[component.id-1].horizSampling;
+        const vertBlocks  = this.frameData.components[component.id-1].vertSampling;
+        const quantTable  = this.quantTables[this.frameData.components[component.id-1].quantTable].values;
+        /* JPEG spec defines default conditioning values in F.1.4.4.1.4 and F.1.4.4.2.1 */
+        const dcTable     = this.dcTables[component.dcTable] || { lowThreshold: 0, highThreshold: 2 };
+        const acTable     = this.acTables[component.acTable] || { threshold: 5 };
+        const dcContext   = component.dcTable * 49;
+        const acContext   = (this.dcTables.length * 49) + (component.acTable * 245);
+
+        for (var i = 0; i < vertBlocks; i++) {
+          for (var j = 0; j < horizBlocks; j++) {
+            const [prevDcCoeff, prevDcDelta] = [prevDcCoeffs[componentIndex], prevDcDeltas[componentIndex]];
+            const [coefficients, dcDelta] = this.readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcContext, acContext);
+            prevDcCoeffs[componentIndex] = coefficients[0];
+            prevDcDeltas[componentIndex] = dcDelta;
+
+            samples[blockIndex++] = this.inverseDCT(this.inverseZigzagOrder(this.dequantizeCoefficients(coefficients, quantTable)));
+          }
+        }
+      }
+
       this.paintPixels(raster, samples, header.components, nextMcu, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling);
       nextMcu++;
     }
@@ -656,6 +712,14 @@ class JPEG {
     }
 
     return [index, bitIndex, coefficients];
+  }
+
+  readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcContext, acContext) {
+    const dcDelta = decoder.decodeDCCoefficientDelta(dcContext, prevDcDelta, dcTable.lowThreshold, dcTable.highThreshold);
+    const dcCoeff = prevDcCoeff + dcDelta;
+    const coefficients = decoder.decodeACCoefficients(acContext, acTable.threshold);
+    coefficients.unshift(dcCoeff);
+    return [coefficients, dcDelta];
   }
 
   /* Read some number of consecutive bits out of `buffer`, starting from specified position */

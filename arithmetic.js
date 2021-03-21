@@ -464,6 +464,160 @@ class Decoder {
       this.neededBits--;
     } while (this.intervalSize < 0x8000);
   }
+
+  /* Helpers for decoding arithmetic-coded JPEG color samples */
+
+  /* JPEG spec uses abbreviated, symbolic names for the context indices used
+   * for various different probability estimates required for JPEG encoding/decoding.
+   * We'll follow the names in the spec */
+
+  /* For each DC conditioning table, the first 20 context indices are 5 groups of
+   * 4 each; the group is chosen according to the magnitude of the previous
+   * decoded DC delta for the current image component.
+   *
+   * Where we draw the line between "zero", "small", and "large" magnitudes is
+   * determined by the DC conditioning table.
+   *
+   * Within each group, the 4 indices are for estimating: Whether the next DC delta
+   * will be zero, what its sign will be if non-zero, whether it will be 1, and
+   * whether it will be -1 */
+  static S0_zero = 0;
+  static S0_small = 4;
+  static S0_large = 8;
+  static S0_neg_small = 12;
+  static S0_neg_large = 16;
+
+  /* X1-X15 are used to estimate probability of DC delta magnitude being 2 or less,
+   * 4 or less, 8 or less, 16 or less... and so on */
+  static X1 = 20;
+  /* M2-M15 are used for probability estimates of DC delta value bits
+   * If the magnitude is 2 or less, we don't need any value bits... which is why
+   * there's no 'M1' */
+  static M2 = Decoder.X1 + 15;
+
+  /* Next, for each AC conditioning table, we have 3 indices for each position in
+   * the zig-zag coefficient order, for a total of 189 indices. These are used for
+   * estimating:
+   * 1) whether all the remaining coefficients are zeroes,
+   * 2) whether this coefficient is zero,
+   * 3) whether it will be 1/-1,
+   * 3) whether it will be 2/-2
+   * (those last decisions use the same probability estimates; the context index is shared)
+   *
+   * For AC coefficients, we also have X2-X15 indices to estimate probability of
+   * coefficient magnitude being 4 or less, 8 or less, 16 or less, etc., as well
+   * as M2-M15 indices to estimate probabilities when decoding coefficient value
+   * bits.
+   *
+   * However, unlike DC deltas, there are 2 separate sets of X2-M15 indices for
+   * AC coefficients; one set is used for the lower positions in the zig-zag
+   * order, and the other set for the higher positions. The threshold at which
+   * we switch sets is given by the 'threshold' value in the AC conditioning table. */
+  static X2_low = 189;
+  static X2_high = Decoder.X2_low + 28;
+
+  /* Decode representation used by JPEG for DC coefficients */
+  decodeDCCoefficientDelta(dcContext, prevDCDelta, lowThreshold, highThreshold) {
+    var S0 = dcContext; /* Base index for current DC conditioning table's statistics area */
+    if (prevDCDelta > lowThreshold && prevDCDelta <= highThreshold) {
+      S0 += Decoder.S0_small; /* "small" difference category */
+    } else if (prevDCDelta > highThreshold) {
+      S0 += Decoder.S0_large;
+    } else if (-prevDCDelta > lowThreshold && -prevDCDelta <= highThreshold) {
+      S0 += Decoder.S0_neg_small;
+    } else if (-prevDCDelta > highThreshold) {
+      S0 += Decoder.S0_neg_large;
+    } else {
+      S0 += Decoder.S0_zero;
+    }
+
+    if (!this.decodeBit(S0))
+      return 0;
+    return this.decodeSignMagnitude(S0 + 1, S0 + 2, S0 + 3, dcContext + Decoder.X1, dcContext + Decoder.X1 + 1);
+  }
+
+  /* Decode representation used by JPEG for AC coefficients */
+  decodeACCoefficients(acContext, threshold) {
+    const acCoefficients = [];
+
+    var zigZagIndex = 0;
+    do {
+      /* Context indices used for decoding this AC coefficient
+       * Follow names in JPEG spec (see Table F.5) */
+      const SE = acContext + (3 * zigZagIndex);
+      const S0 = SE + 1;
+      const SN_SP = S0 + 1;
+      const X1 = S0 + 1;
+
+      if (this.decodeBit(SE)) {
+        /* End of block; the remaining coefficients are zero */
+        while (acCoefficients.length < 63)
+          acCoefficients.push(0);
+        return acCoefficients;
+      }
+
+      while (!this.decodeBit(S0)) {
+        /* Zero coefficient
+         * This won't overrun the total of 63 coefficients which we need; because
+         * if all remaining coefficients were zero, that would have been encoded
+         * as 'end of block' */
+        acCoefficients.push(0);
+        zigZagIndex++;
+      }
+
+      /* Unlike DC deltas, AC coefficients do not use any context index for
+       * estimating probability of positive/negative sign; a fixed probability
+       * estimate is used instead. Also, the same index is shared for estimating
+       * likelihood of getting 1 or -1. */
+      if (zigZagIndex <= threshold) {
+        acCoefficients.push(this.decodeSignMagnitude(null, SN_SP, SN_SP, X1, acContext + Decoder.X2_low));
+      } else {
+        acCoefficients.push(this.decodeSignMagnitude(null, SN_SP, SN_SP, X1, acContext + Decoder.X2_high));
+      }
+
+      zigZagIndex++;
+    } while(acCoefficients.length < 63);
+
+    return acCoefficients;
+  }
+
+  /* Decode sign-magnitude-bits representation used by JPEG for coefficients
+   * We already know the value is not zero */
+  decodeSignMagnitude(signContext, posContext, negContext, magContext1, magContext2) {
+    var sign;
+    if (signContext) {
+      sign = this.decodeBit(signContext) ? -1 : 1;
+    } else {
+      const [signBit,] = this.decodeDecision(0x5A1D, false)
+      sign = signBit ? -1 : 1;
+    }
+
+    if (sign === 1 ? !this.decodeBit(posContext) : !this.decodeBit(negContext))
+      return sign;
+
+    if (!this.decodeBit(magContext1)) {
+      return 2 * sign;
+    }
+
+    /* Find log₂ of number. This will tell us how many bits to decode */
+    var context = magContext2;
+    var magnitude = 4;
+    while (this.decodeBit(context)) {
+      context++;
+      magnitude <<= 1;
+    }
+
+    /* Now we know how many bits the number requires... so decode them one by one */
+    context += 14;
+    magnitude >>= 1;
+    var value = magnitude;
+    while (magnitude >>= 1) {
+      if (this.decodeBit(context))
+        value += magnitude;
+    }
+
+    return (value + 1) * sign;
+  }
 }
 
 module.exports.Coder = Coder;
