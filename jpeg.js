@@ -294,7 +294,7 @@ class JPEG {
     if (buffer.readUInt16BE(index) !== 0xFFCC)
       throw new Error("Invalid arithmetic conditioning segment (wrong marker)");
     const length = buffer.readUInt16BE(index+2);
-    const end    = index + length;
+    const end    = index + length + 2;
 
     index += 4;
     while (index < end) {
@@ -309,7 +309,7 @@ class JPEG {
 
   dumpConditioningSegment(buffer, index) {
     const length = buffer.readUInt16BE(index+2);
-    const end    = index + length;
+    const end    = index + length + 2;
 
     index += 4;
     while (index < end) {
