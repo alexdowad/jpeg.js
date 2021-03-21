@@ -525,12 +525,7 @@ class JPEG {
         if (header.components.length == 3) {
           if (maxHorizSampling == 1 && maxVertSampling == 1) {
             /* All image components have the same resolution */
-            for (var y = 0; y < yEnd - yStart; y++) {
-              for (var x = 0; x < xEnd - xStart; x++) {
-                const rasterIndex = (((y + yStart) * this.frameData.width) + x + xStart) * 3;
-                this.convertYCbCrtoRGB(raster, rasterIndex, samples[0][y*8 + x], samples[1][y*8 + x], samples[2][y*8 + x]);
-              }
-            }
+            this.paintYCbCrPixels(raster, samples, 8, xStart, xEnd, yStart, yEnd);
           } else {
             /* Some image components have different resolution from others; we need to
              * 'align' the corresponding samples in each image component before performing
@@ -545,23 +540,11 @@ class JPEG {
              * resolution component only), even though the coefficients were originally derived
              * from 8x8 pixels. This is perhaps a smarter way to scale the 8x8 block up. */
             const alignedSamples = this.alignSamples(header.components, samples, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling);
-
-            for (var y = 0; y < yEnd - yStart; y++) {
-              for (var x = 0; x < xEnd - xStart; x++) {
-                const rasterIndex = (((y + yStart) * this.frameData.width) + x + xStart) * 3;
-                this.convertYCbCrtoRGB(raster, rasterIndex, alignedSamples[0][y*mcuPxWidth + x], alignedSamples[1][y*mcuPxWidth + x], alignedSamples[2][y*mcuPxWidth + x]);
-              }
-            }
+            this.paintYCbCrPixels(raster, alignedSamples, mcuPxWidth, xStart, xEnd, yStart, yEnd);
           }
         } else if (header.components.length == 1) {
           /* Luminance-only (grayscale) color space */
-          for (var y = 0; y < yEnd - yStart; y++) {
-            for (var x = 0; x < xEnd - xStart; x++) {
-              const rasterIndex = (((y + yStart) * this.frameData.width) + x + xStart) * 3;
-              /* No need for any fancy conversion; R, G, and B are all equal to Y */
-              raster[rasterIndex] = raster[rasterIndex+1] = raster[rasterIndex+2] = samples[0][y*8 + x] + 128;
-            }
-          }
+          this.paintGrayscalePixels(raster, samples, xStart, xEnd, yStart, yEnd);
         } else {
           throw new Error("Unknown color space");
         }
@@ -802,6 +785,28 @@ class JPEG {
   }
 
   /* Color space conversion */
+
+  paintGrayscalePixels(raster, samples, xStart, xEnd, yStart, yEnd) {
+    for (var y = 0; y < yEnd - yStart; y++) {
+      for (var x = 0; x < xEnd - xStart; x++) {
+        const rasterIndex = (((y + yStart) * this.frameData.width) + x + xStart) * 3;
+        /* No need for any fancy conversion; R, G, and B are all equal to Y */
+        raster[rasterIndex] = raster[rasterIndex+1] = raster[rasterIndex+2] = samples[0][y*8 + x] + 128;
+      }
+    }
+  }
+
+  /* `lineWidth` may not be the same as `xEnd - xStart`;
+   * If these samples extend past the right side of the image, there may be some unused samples
+   * on the right side of each line of samples */
+  paintYCbCrPixels(raster, samples, lineWidth, xStart, xEnd, yStart, yEnd) {
+    for (var y = 0; y < yEnd - yStart; y++) {
+      for (var x = 0; x < xEnd - xStart; x++) {
+        const rasterIndex = (((y + yStart) * this.frameData.width) + x + xStart) * 3;
+        this.convertYCbCrtoRGB(raster, rasterIndex, samples[0][y*lineWidth + x], samples[1][y*lineWidth + x], samples[2][y*lineWidth + x]);
+      }
+    }
+  }
 
   convertYCbCrtoRGB(raster, index, y, cb, cr) {
     /* Y-Cb-Cr conversion as defined in JFIF spec 1.02, page 4
