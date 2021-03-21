@@ -20,7 +20,7 @@
  *
  * !! Read up before proceeding: https://en.wikipedia.org/wiki/Arithmetic_coding */
 
-class ArithmeticCoder {
+class Coder {
   constructor(nContexts) {
     /* Trailing bits for the low bound of the current probability interval
      *
@@ -195,7 +195,7 @@ class ArithmeticCoder {
    * `context` -> zero-based integer, representing the type of input data which
    *              this bit represents (see comments at beginning of file) */
   encodeBit(bit, context) {
-    const state = ArithmeticCoder.stateTable[this.states[context]];
+    const state = Coder.stateTable[this.states[context]];
 
     /* `state.probability` is the estimated probability of getting the LPS
      * (In fixed-point representation, where 0x8000 means 75%. It should
@@ -374,9 +374,9 @@ class ArithmeticCoder {
   }
 }
 
-/* Do the same stuff as `ArithmeticCoder`... backwards
- * See comments in `ArithmeticCoder` to understand the algorithm */
-class ArithmeticDecoder {
+/* Do the same stuff as `Coder`... backwards
+ * See comments in `Coder` to understand the algorithm */
+class Decoder {
   constructor(nContexts, input) {
     this.intervalBase = 0;
     this.intervalSize = 0x10000;
@@ -393,7 +393,7 @@ class ArithmeticDecoder {
   }
 
   decodeBit(context) {
-    const state = ArithmeticCoder.stateTable[this.states[context]];
+    const state = Coder.stateTable[this.states[context]];
     const mps = this.moreProbableSymbol[context];
     const [result, nextState, swapMPS] = this.decodeDecision(state.probability, mps, state.nextMPS, state.nextLPS, state.swapMPS);
 
@@ -475,5 +475,5 @@ class ArithmeticDecoder {
   }
 }
 
-module.exports.ArithmeticCoder = ArithmeticCoder;
-module.exports.ArithmeticDecoder = ArithmeticDecoder;
+module.exports.Coder = Coder;
+module.exports.Decoder = Decoder;

@@ -1,6 +1,6 @@
 'use strict'
 
-const { ArithmeticCoder, ArithmeticDecoder } = require("../arithmetic.js");
+const arithmetic = require("../arithmetic.js");
 
 function equals(a, b) {
   if (Array.isArray(a)) {
@@ -25,7 +25,7 @@ function assertEquals(a, b) {
 }
 
 /* Test sequence from JPEG spec, K.4.1 */
-const coder1 = new ArithmeticCoder(1);
+const coder1 = new arithmetic.Coder(1);
 coder1.encodeUInt(0x00020051, 32, 0);
 coder1.encodeUInt(0x000000C0, 32, 0);
 coder1.encodeUInt(0x0352872A, 32, 0);
@@ -44,7 +44,7 @@ assertArray(result1, expected1);
 
 
 /* Feed the encoder output into the decoder */
-const decoder1 = new ArithmeticDecoder(1, result1);
+const decoder1 = new arithmetic.Decoder(1, result1);
 assertEquals(decoder1.decodeUInt(32, 0), 0x00020051);
 assertEquals(decoder1.decodeUInt(32, 0), 0x000000C0);
 assertEquals(decoder1.decodeUInt(32, 0), 0x0352872A);
