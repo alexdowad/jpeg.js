@@ -515,40 +515,8 @@ class JPEG {
           }
         }
 
-        /* Got one whole MCU, now convert samples to RGB color space and fill in raster
-         * First figure out where in the raster these pixels are located */
-        const xStart = (mcuNumber % Math.ceil(this.frameData.width / mcuPxWidth)) * mcuPxWidth;
-        const yStart = Math.floor(mcuNumber / Math.ceil(this.frameData.width / mcuPxWidth)) * mcuPxHeight;
-        const xEnd   = Math.min(xStart + mcuPxWidth, this.frameData.width);
-        const yEnd   = Math.min(yStart + mcuPxHeight, this.frameData.height);
-
-        if (header.components.length == 3) {
-          if (maxHorizSampling == 1 && maxVertSampling == 1) {
-            /* All image components have the same resolution */
-            this.paintYCbCrPixels(raster, samples, 8, xStart, xEnd, yStart, yEnd);
-          } else {
-            /* Some image components have different resolution from others; we need to
-             * 'align' the corresponding samples in each image component before performing
-             * the color space conversion. This may, for example, require taking each sample
-             * from a lower-resolution component and scaling it up to become a 2x2 square of
-             * 4 identical samples.
-             *
-             * This is different from what libjpeg does. If, for example, one image component
-             * is sampled at double the X and Y resolution of another, so 8x8 samples of the
-             * low-resolution component must be matched to 16x16 samples of the high-resolution
-             * component, libjpeg actually evaluates the IDCT at 16x16 points (for the low
-             * resolution component only), even though the coefficients were originally derived
-             * from 8x8 pixels. This is perhaps a smarter way to scale the 8x8 block up. */
-            const alignedSamples = this.alignSamples(header.components, samples, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling);
-            this.paintYCbCrPixels(raster, alignedSamples, mcuPxWidth, xStart, xEnd, yStart, yEnd);
-          }
-        } else if (header.components.length == 1) {
-          /* Luminance-only (grayscale) color space */
-          this.paintGrayscalePixels(raster, samples, xStart, xEnd, yStart, yEnd);
-        } else {
-          throw new Error("Unknown color space");
-        }
-
+        /* Got one whole MCU, now convert samples to RGB color space and fill in raster */
+        this.paintPixels(raster, samples, header.components, mcuNumber, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling);
         mcuNumber++;
       }
 
@@ -785,6 +753,41 @@ class JPEG {
   }
 
   /* Color space conversion */
+
+  paintPixels(raster, samples, components, mcuNumber, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling) {
+    /* First figure out where in the raster these pixels are located */
+    const xStart = (mcuNumber % Math.ceil(this.frameData.width / mcuPxWidth)) * mcuPxWidth;
+    const yStart = Math.floor(mcuNumber / Math.ceil(this.frameData.width / mcuPxWidth)) * mcuPxHeight;
+    const xEnd   = Math.min(xStart + mcuPxWidth, this.frameData.width);
+    const yEnd   = Math.min(yStart + mcuPxHeight, this.frameData.height);
+
+    if (components.length == 3) {
+      if (maxHorizSampling == 1 && maxVertSampling == 1) {
+        /* All image components have the same resolution */
+        this.paintYCbCrPixels(raster, samples, 8, xStart, xEnd, yStart, yEnd);
+      } else {
+        /* Some image components have different resolution from others; we need to
+         * 'align' the corresponding samples in each image component before performing
+         * the color space conversion. This may, for example, require taking each sample
+         * from a lower-resolution component and scaling it up to become a 2x2 square of
+         * 4 identical samples.
+         *
+         * This is different from what libjpeg does. If, for example, one image component
+         * is sampled at double the X and Y resolution of another, so 8x8 samples of the
+         * low-resolution component must be matched to 16x16 samples of the high-resolution
+         * component, libjpeg actually evaluates the IDCT at 16x16 points (for the low
+         * resolution component only), even though the coefficients were originally derived
+         * from 8x8 pixels. This is perhaps a smarter way to scale the 8x8 block up. */
+        const alignedSamples = this.alignSamples(components, samples, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling);
+        this.paintYCbCrPixels(raster, alignedSamples, mcuPxWidth, xStart, xEnd, yStart, yEnd);
+      }
+    } else if (components.length == 1) {
+      /* Luminance-only (grayscale) color space */
+      this.paintGrayscalePixels(raster, samples, xStart, xEnd, yStart, yEnd);
+    } else {
+      throw new Error("Unknown color space");
+    }
+  }
 
   paintGrayscalePixels(raster, samples, xStart, xEnd, yStart, yEnd) {
     for (var y = 0; y < yEnd - yStart; y++) {
