@@ -454,7 +454,6 @@ class JPEG {
       maxHorizSampling = Math.max(maxHorizSampling, componentData.horizSampling);
       maxVertSampling = Math.max(maxVertSampling, componentData.vertSampling);
     }
-    const samples = new Array(blocksPerMcu);
     const mcuPxWidth = 8 * maxHorizSampling;
     const mcuPxHeight = 8 * maxVertSampling;
 
@@ -478,47 +477,8 @@ class JPEG {
       buffer.copy(ecs, 0, index, ecsEnd);
       this.removeByteStuffing(ecs);
 
-      const expectedMcus = mcuNumber + mcusPerSegment;
-
-      /* For each image component, we need to track the last DC coefficient seen within
-       * the current scan; it is used to help calculate the next DC coefficient */
-      var prevDcCoeffs = new Array(header.components.length).fill(0);
-
-      /* Decode enough blocks to form a complete MCU, then enter the pixel values in `raster`
-       * Then start again on the next MCU, until we reach the end of this ECS */
-      var bytePos = 0, bitPos = 0;
-      while (mcuNumber < expectedMcus && bytePos < ecs.length) {
-        var blockIndex = 0;
-
-        /* The scan header tells us which image components are present in this scan,
-         * and in which order. Follow the specified order */
-        for (var componentIndex = 0; componentIndex < header.components.length; componentIndex++) {
-          const component   = header.components[componentIndex];
-          const horizBlocks = this.frameData.components[component.id-1].horizSampling;
-          const vertBlocks  = this.frameData.components[component.id-1].vertSampling;
-          const dcDecoder   = this.dcDecoders[component.dcTable];
-          const acDecoder   = this.acDecoders[component.acTable];
-          const quantTable  = this.quantTables[this.frameData.components[component.id-1].quantTable].values;
-
-          for (var i = 0; i < vertBlocks; i++) {
-            for (var j = 0; j < horizBlocks; j++) {
-              const prevDcCoeff = prevDcCoeffs[componentIndex];
-              var coefficients;
-              [bytePos, bitPos, coefficients] = this.readHuffmanSampleBlock(ecs, bytePos, bitPos, ecs.length, prevDcCoeff, dcDecoder, acDecoder);
-              prevDcCoeffs[componentIndex] = coefficients[0];
-
-              /* Entropy-coded data has been decoded to DCT (discrete cosine transform) coefficients;
-               * Now convert those coefficients back to an array of color samples */
-              coefficients = this.inverseZigzagOrder(this.dequantizeCoefficients(coefficients, quantTable));
-              samples[blockIndex++] = this.inverseDCT(coefficients);
-            }
-          }
-        }
-
-        /* Got one whole MCU, now convert samples to RGB color space and fill in raster */
-        this.paintPixels(raster, samples, header.components, mcuNumber, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling);
-        mcuNumber++;
-      }
+      /* Decode entropy-coded data in this ECS, convert to pixel values, and enter in `raster` */
+      mcuNumber = this.readHuffmanCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + mcusPerSegment, blocksPerMcu, maxHorizSampling, maxVertSampling);
 
       if (buffer[ecsEnd+1] >= 0xD0 && buffer[ecsEnd+1] <= 0xD7) {
         /* Restart marker; continue decoding the scan data
@@ -535,6 +495,54 @@ class JPEG {
 
   readProgressiveScan(buffer, index) {
     throw new Error("Not implemented yet");
+  }
+
+  readHuffmanCodedSegment(raster, header, ecs, nextMcu, lastMcu, blocksPerMcu, maxHorizSampling, maxVertSampling) {
+    const mcuPxWidth = 8 * maxHorizSampling;
+    const mcuPxHeight = 8 * maxVertSampling;
+    const samples = new Array(blocksPerMcu);
+
+    /* For each image component, we need to track the last DC coefficient seen within
+     * the current scan; it is used to help calculate the next DC coefficient */
+    const prevDcCoeffs = new Array(header.components.length).fill(0);
+
+    /* Decode enough blocks to form a complete MCU, then enter the pixel values in `raster`
+     * Then start again on the next MCU, until we reach the end of this ECS */
+    var bytePos = 0, bitPos = 0;
+    while (nextMcu < lastMcu && bytePos < ecs.length) {
+      var blockIndex = 0;
+
+      /* The scan header tells us which image components are present in this scan,
+       * and in which order. Follow the specified order */
+      for (var componentIndex = 0; componentIndex < header.components.length; componentIndex++) {
+        const component   = header.components[componentIndex];
+        const horizBlocks = this.frameData.components[component.id-1].horizSampling;
+        const vertBlocks  = this.frameData.components[component.id-1].vertSampling;
+        const dcDecoder   = this.dcDecoders[component.dcTable];
+        const acDecoder   = this.acDecoders[component.acTable];
+        const quantTable  = this.quantTables[this.frameData.components[component.id-1].quantTable].values;
+
+        for (var i = 0; i < vertBlocks; i++) {
+          for (var j = 0; j < horizBlocks; j++) {
+            const prevDcCoeff = prevDcCoeffs[componentIndex];
+            var coefficients;
+            [bytePos, bitPos, coefficients] = this.readHuffmanSampleBlock(ecs, bytePos, bitPos, ecs.length, prevDcCoeff, dcDecoder, acDecoder);
+            prevDcCoeffs[componentIndex] = coefficients[0];
+
+            /* Entropy-coded data has been decoded to DCT (discrete cosine transform) coefficients;
+             * Now convert those coefficients back to an array of color samples */
+            coefficients = this.inverseZigzagOrder(this.dequantizeCoefficients(coefficients, quantTable));
+            samples[blockIndex++] = this.inverseDCT(coefficients);
+          }
+        }
+      }
+
+      /* Got one whole MCU, now convert samples to RGB color space and fill in raster */
+      this.paintPixels(raster, samples, header.components, nextMcu, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling);
+      nextMcu++;
+    }
+
+    return nextMcu;
   }
 
   /* JPEG encodes 0xFF bytes in compressed data as 0xFF00;
