@@ -42,7 +42,8 @@ const expected1 = [
 
 assertArray(result1, expected1);
 
-
+/* Remove byte-stuffing from input */
+result1.splice(12, 1);
 /* Feed the encoder output into the decoder */
 const decoder1 = new arithmetic.Decoder(1, result1);
 assertEquals(decoder1.decodeUInt(32, 0), 0x00020051);

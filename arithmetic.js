@@ -375,7 +375,9 @@ class Coder {
 }
 
 /* Do the same stuff as `Coder`... backwards
- * See comments in `Coder` to understand the algorithm */
+ * See comments in `Coder` to understand the algorithm
+ *
+ * Byte stuffing must have already been removed from `input`! */
 class Decoder {
   constructor(nContexts, input) {
     this.intervalBase = 0;
@@ -447,18 +449,7 @@ class Decoder {
        * Act as if the input is padded with zeroes */
       return;
     }
-    const inputByte = this.input.shift();
-
-    if (inputByte === 0xFF) {
-      const nextByte = this.input.shift();
-      if (nextByte === 0) {
-        this.intervalBase |= 0xFF00;
-      } else {
-        throw new Error("0xFF byte not properly stuffed");
-      }
-    } else {
-      this.intervalBase += (inputByte << 8);
-    }
+    this.intervalBase += (this.input.shift() << 8);
   }
 
   renormalize() {
