@@ -372,14 +372,10 @@ class JPEG {
     }
   }
 
-  dequantizeDcCoefficient(dcCoeff, quantTable) {
-    return dcCoeff * quantTable[0];
-  }
-
-  dequantizeAcCoefficients(acCoeff, quantTable) {
-    for (var i = 0; i < acCoeff.length; i++)
-      acCoeff[i] *= quantTable[i+1];
-    return acCoeff;
+  dequantizeCoefficients(coefficients, quantTable) {
+    for (var i = 0; i < coefficients.length; i++)
+      coefficients[i] *= quantTable[i];
+    return coefficients;
   }
 
   /* Scan header */
@@ -507,15 +503,14 @@ class JPEG {
           for (var i = 0; i < vertBlocks; i++) {
             for (var j = 0; j < horizBlocks; j++) {
               const prevDcCoeff = prevDcCoeffs[componentIndex];
-              var dcCoefficient, acCoefficients;
-              [bytePos, bitPos, dcCoefficient, acCoefficients] = this.readHuffmanSampleBlock(ecs, bytePos, bitPos, ecs.length, prevDcCoeff, dcDecoder, acDecoder);
-              prevDcCoeffs[componentIndex] = dcCoefficient;
+              var coefficients;
+              [bytePos, bitPos, coefficients] = this.readHuffmanSampleBlock(ecs, bytePos, bitPos, ecs.length, prevDcCoeff, dcDecoder, acDecoder);
+              prevDcCoeffs[componentIndex] = coefficients[0];
 
               /* Entropy-coded data has been decoded to DCT (discrete cosine transform) coefficients;
                * Now convert those coefficients back to an array of color samples */
-              dcCoefficient  = this.dequantizeDcCoefficient(dcCoefficient, quantTable);
-              acCoefficients = this.inverseZigzagOrder(this.dequantizeAcCoefficients(acCoefficients, quantTable));
-              samples[blockIndex++] = this.inverseDCT(dcCoefficient, acCoefficients);
+              coefficients = this.inverseZigzagOrder(this.dequantizeCoefficients(coefficients, quantTable));
+              samples[blockIndex++] = this.inverseDCT(coefficients);
             }
           }
         }
@@ -671,8 +666,8 @@ class JPEG {
     const dcCoeff = this.decodeMagnitudeAndBits(magnitude, extraBits) + prevDcCoeff;
 
     /* Now we start finding the 63 AC coefficients for this block */
-    const acCoefficients = [];
-    while (acCoefficients.length < 63) {
+    const coefficients = [dcCoeff];
+    while (coefficients.length < 64) {
       /* Read an 8-bit, huffman-coded value in which the high 4 bits are the number
        * of preceding zeros (i.e. run-length encoding for zeroes only) and the low
        * 4 bits are the magnitude of the following AC coefficient */
@@ -682,12 +677,12 @@ class JPEG {
       /* There are 2 special values we need to check for */
       if (composite == 0) {
         /* 0 means 'end of block'; fill the rest of the AC coefficients with zeroes */
-        while (acCoefficients.length < 63)
-          acCoefficients.push(0);
+        while (coefficients.length < 64)
+          coefficients.push(0);
       } else if (composite == 0xF0) {
         /* 0xF0 means '16 consecutive zeroes' */
         for (var i = 0; i < 16; i++)
-          acCoefficients.push(0);
+          coefficients.push(0);
       } else {
         /* Regular AC coefficient */
         precedingZeroes = composite >> 4;
@@ -696,12 +691,12 @@ class JPEG {
         const acCoeff = this.decodeMagnitudeAndBits(magnitude, extraBits);
 
         while (precedingZeroes-- > 0)
-          acCoefficients.push(0);
-        acCoefficients.push(acCoeff);
+          coefficients.push(0);
+        coefficients.push(acCoeff);
       }
     }
 
-    return [index, bitIndex, dcCoeff, acCoefficients];
+    return [index, bitIndex, coefficients];
   }
 
   /* Read some number of consecutive bits out of `buffer`, starting from specified position */
@@ -751,37 +746,36 @@ class JPEG {
   }
 
   static zigzagSequence = [
-    0, 7,
-    15, 8, 1,
-    2, 9, 16, 23,
-    31, 24, 17, 10, 3,
-    4, 11, 18, 25, 32, 39,
-    47, 40, 33, 26, 19, 12, 5,
-    6, 13, 20, 27, 34, 41, 48, 55,
-    56, 49, 42, 35, 28, 21, 14,
-    22, 29, 36, 43, 50, 57,
-    58, 51, 44, 37, 30,
-    38, 45, 52, 59,
-    60, 53, 46,
-    54, 61,
-    62
+    0,
+    1, 8,
+    16, 9, 2,
+    3, 10, 17, 24,
+    32, 25, 18, 11, 4,
+    5, 12, 19, 26, 33, 40,
+    48, 41, 34, 27, 20, 13, 6,
+    7, 14, 21, 28, 35, 42, 49, 56,
+    57, 50, 43, 36, 29, 22, 15,
+    23, 30, 37, 44, 51, 58,
+    59, 52, 45, 38, 31,
+    39, 46, 53, 60,
+    61, 54, 47,
+    55, 62,
+    63
   ];
 
-  inverseZigzagOrder(samples) {
-    if (samples.length != 63)
-      throw new Error("Expected 63 AC coefficients");
-    var permutation = new Array(63);
-    for (var i = 0; i < 63; i++)
-      permutation[JPEG.zigzagSequence[i]] = samples[i];
+  inverseZigzagOrder(coefficients) {
+    if (coefficients.length != 64)
+      throw new Error("Expected 64 coefficients");
+    var permutation = new Array(64);
+    for (var i = 0; i < 64; i++)
+      permutation[JPEG.zigzagSequence[i]] = coefficients[i];
     return permutation;
   }
 
   /* Discrete cosine transform */
 
-  inverseDCT(dcCoeff, acCoeff) {
+  inverseDCT(coefficients) {
     const samples = new Array(64).fill(0);
-    const coefficients = acCoeff;
-    coefficients.unshift(dcCoeff);
 
     for (var x = 0; x < 8; x++) {
       for (var y = 0; y < 8; y++) {
