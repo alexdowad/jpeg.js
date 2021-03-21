@@ -277,7 +277,17 @@ class JPEG {
      * 2 4-bit values for each DC 'table'. Everything else that is needed is
      * built in to the arithmetic decoder and its state machine. */
     const value = buffer[index+1];
-    return { type: tableClass, number: tableNumber, value: value };
+    if (tableClass === 0) {
+      const low = value & 0xF;
+      const high = value >> 4;
+      if (low < 0 || low > 15 || high < 0 || high > 15)
+        throw new Error(`Invalid threshold values for arithmetic-coded DC coefficient conditioning`);
+      return { type: 0, number: tableNumber, lowThreshold: low === 0 ? 0 : 1 << (low - 1), highThreshold: 1 << high };
+    } else {
+      if (value < 0 || value > 63)
+        throw new Error(`Invalid threshold value ${value} for arithmetic-coded AC coefficient conditioning`);
+      return { type: tableClass, number: tableNumber, threshold: value };
+    }
   }
 
   handleConditioningSegment(buffer, index) {
@@ -307,9 +317,9 @@ class JPEG {
       console.group();
       console.log(`Arithmetic conditioning table class: ${table.type ? 'AC' : 'DC'}, Number: ${table.number}`);
       if (table.type)
-        console.log(`Kx: ${table.value}`);
+        console.log(`Kx: ${table.threshold}`);
       else
-        console.log(`U: ${table.value >> 4} L: ${table.value & 0xF}`);
+        console.log(`U: ${table.highThreshold} L: ${table.lowThreshold}`);
       console.groupEnd();
       index += 2;
     }
