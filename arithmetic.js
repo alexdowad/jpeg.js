@@ -544,10 +544,10 @@ class Decoder {
     do {
       /* Context indices used for decoding this AC coefficient
        * Follow names in JPEG spec (see Table F.5) */
-      const SE = acContext + (3 * zigZagIndex);
-      const S0 = SE + 1;
-      const SN_SP = S0 + 1;
-      const X1 = S0 + 1;
+      var SE    = acContext + (3 * zigZagIndex);
+      var S0    = SE + 1;
+      var SN_SP = S0 + 1;
+      var X1    = S0 + 1;
 
       if (this.decodeBit(SE)) {
         /* End of block; the remaining coefficients are zero */
@@ -563,6 +563,9 @@ class Decoder {
          * as 'end of block' */
         acCoefficients.push(0);
         zigZagIndex++;
+        S0    += 3;
+        SN_SP += 3;
+        X1    += 3;
       }
 
       /* Unlike DC deltas, AC coefficients do not use any context index for
