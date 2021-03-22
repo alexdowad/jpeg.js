@@ -394,6 +394,7 @@ class JPEG {
 
     var nComponents = buffer[index+4];
     var components  = [];
+    var result      = { components: components };
 
     index += 5;
     while (nComponents-- > 0) {
@@ -412,16 +413,14 @@ class JPEG {
       const selectionEnd   = buffer[index+1];
       const approxBitPos   = buffer[index+2];
       if (this.frameData.progressive) {
-        return {
-          components: components,
+        result = {
           spectralStart: selectionStart,
           spectralEnd: selectionEnd,
           approxBitHigh: approxBitPos >> 4,
           approxBitLow: approxBitPos & 0xF
         };
       } else if (this.frameData.lossless) {
-        return {
-          components: components,
+        result = {
           predictor: selectionEnd,     /* This field has different meaning for lossless JPEGs */
           pointTransform: approxBitPos /* Likewise */
         };
@@ -431,7 +430,7 @@ class JPEG {
       }
     }
 
-    return {components: components};
+    return result;
   }
 
   dumpScanHeader(buffer, index) {
