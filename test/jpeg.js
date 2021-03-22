@@ -257,4 +257,14 @@ assertArray(Array.from(raster10), array6); /* Contents of image are same as #6 *
 var [jpg11, raster11] = JPEG.fromBytes(fs.readFileSync(__dirname + '/arithmetic0.jpg'));
 assertArray(Array.from(raster11), new Array(192).fill(255));
 
+/* Arithmetic-coded flat red image */
+var array12 = [];
+for (var i = 0; i < 64; i++) {
+  array12.push(254);
+  array12.push(0);
+  array12.push(0);
+}
+var [jpg12, raster12] = JPEG.fromBytes(fs.readFileSync(__dirname + '/arithmetic1.jpg'));
+assertArray(Array.from(raster12), array12);
+
 console.log("OK!");
