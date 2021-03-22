@@ -473,10 +473,11 @@ class JPEG {
 
       /* Decode entropy-coded data in this ECS, convert to pixel values, and enter in `raster` */
       if (this.frameData.coding === 'huffman') {
-        mcuNumber = this.readHuffmanCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + mcusPerSegment, blocksPerMcu, maxHorizSampling, maxVertSampling);
+        this.readHuffmanCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + mcusPerSegment, blocksPerMcu, maxHorizSampling, maxVertSampling);
       } else {
-        mcuNumber = this.readArithmeticCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + mcusPerSegment, blocksPerMcu, maxHorizSampling, maxVertSampling);
+        this.readArithmeticCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + mcusPerSegment, blocksPerMcu, maxHorizSampling, maxVertSampling);
       }
+      mcuNumber += mcusPerSegment;
 
       if (buffer[ecsEnd+1] >= 0xD0 && buffer[ecsEnd+1] <= 0xD7) {
         /* Restart marker; continue decoding the scan data */
@@ -552,8 +553,6 @@ class JPEG {
       this.paintPixels(raster, samples, header.components, nextMcu, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling);
       nextMcu++;
     }
-
-    return nextMcu;
   }
 
   readArithmeticCodedSegment(raster, header, ecs, nextMcu, lastMcu, blocksPerMcu, maxHorizSampling, maxVertSampling) {
@@ -599,8 +598,6 @@ class JPEG {
       this.paintPixels(raster, samples, header.components, nextMcu, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling);
       nextMcu++;
     }
-
-    return nextMcu;
   }
 
   /* JPEG encodes 0xFF bytes in compressed data as 0xFF00;
