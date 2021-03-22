@@ -50,10 +50,11 @@ class JPEG {
 
   static fromBytes = function(buffer) {
     const jpg = new JPEG();
+    var raster;
 
     var i = 0;
     while (true) {
-      i = buffer.indexOf(0xFF, i+2);
+      i = buffer.indexOf(0xFF, i+2); /* Scan for marker */
       if (i == -1)
         break;
 
@@ -82,8 +83,8 @@ class JPEG {
           break;
 
         case 0xDA:
-          const raster = jpg.readBaselineScan(buffer, i);
-          return [jpg, raster];
+          raster = jpg.readBaselineScan(buffer, i);
+          break;
 
         case 0xDD:
           jpg.handleRestartInterval(buffer, i);
@@ -91,7 +92,7 @@ class JPEG {
       }
     }
 
-    return [jpg, undefined];
+    return [jpg, raster];
   }
 
   constructor() {
