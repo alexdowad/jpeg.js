@@ -121,7 +121,7 @@ class Coder {
     {probability: 0x19A8, nextLPS: 70, nextMPS: 43, swapMPS: 0 },
     {probability: 0x1518, nextLPS: 72, nextMPS: 44, swapMPS: 0 },
     {probability: 0x1177, nextLPS: 73, nextMPS: 45, swapMPS: 0 },
-    {probability: 0x0E78, nextLPS: 74, nextMPS: 46, swapMPS: 0 },
+    {probability: 0x0E74, nextLPS: 74, nextMPS: 46, swapMPS: 0 },
     {probability: 0x0BFB, nextLPS: 75, nextMPS: 47, swapMPS: 0 },
     {probability: 0x09F8, nextLPS: 77, nextMPS: 48, swapMPS: 0 },
     {probability: 0x0861, nextLPS: 78, nextMPS: 49, swapMPS: 0 },
