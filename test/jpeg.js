@@ -253,4 +253,8 @@ assertArray(Array.from(raster9), array9);
 var [jpg10, raster10] = JPEG.fromBytes(fs.readFileSync(__dirname + '/16x16-restart-markers.jpg'));
 assertArray(Array.from(raster10), array6); /* Contents of image are same as #6 */
 
+/* Arithmetic-coded JPEGs; start from 8x8 flat white image */
+var [jpg11, raster11] = JPEG.fromBytes(fs.readFileSync(__dirname + '/arithmetic0.jpg'));
+assertArray(Array.from(raster11), new Array(192).fill(255));
+
 console.log("OK!");
