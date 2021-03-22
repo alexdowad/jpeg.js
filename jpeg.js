@@ -441,8 +441,7 @@ class JPEG {
 
   readBaselineScan(buffer, index) {
     const header = this.readScanHeader(buffer, index);
-    index += buffer.readUInt16BE(index+2); /* Go past end of scan header */
-    index += 2;
+    index += buffer.readUInt16BE(index+2) + 2; /* Go past end of scan header */
 
     /* Result, in 24-bit RGB format (3 successive bytes per pixel) */
     const raster = Buffer.alloc(3 * this.frameData.width * this.frameData.height);
@@ -540,8 +539,7 @@ class JPEG {
 
             /* Entropy-coded data has been decoded to DCT (discrete cosine transform) coefficients;
              * Now convert those coefficients back to an array of color samples */
-            coefficients = this.inverseZigzagOrder(this.dequantizeCoefficients(coefficients, quantTable));
-            samples[blockIndex++] = this.inverseDCT(coefficients);
+            samples[blockIndex++] = this.inverseDCT(this.inverseZigzagOrder(this.dequantizeCoefficients(coefficients, quantTable)));
           }
         }
       }
