@@ -465,22 +465,11 @@ class JPEG {
     /* If a restart interval has been defined, each ECS should contain the specified
      * number of MCUs. Otherwise, it should be enough MCUs to complete the image */
     const mcusPerSegment = this.restartInterval || Math.ceil(this.frameData.width / mcuPxWidth) * Math.ceil(this.frameData.height / mcuPxHeight);
-
     var mcuNumber = 0;
 
     /* Decode any number of entropy-coded segments delimited by restart markers */
     while (true) {
-      /* Search for end of this entropy-coded segment */
-      var ecsEnd = buffer.indexOf(0xFF, index);
-      while (ecsEnd !== -1 && buffer[ecsEnd+1] == 0) /* byte stuffing */
-        ecsEnd = buffer.indexOf(0xFF, ecsEnd+2);
-      if (ecsEnd === -1)
-        throw new Error("Unterminated scan section");
-
-      /* Extract data for ECS and remove byte stuffing (convert 0xFF00 -> 0xFF) */
-      const ecs = Buffer.allocUnsafe(ecsEnd - index);
-      buffer.copy(ecs, 0, index, ecsEnd);
-      this.removeByteStuffing(ecs);
+      const [ecs, ecsEnd] = this.extractEntropyCodedSegment(buffer, index);
 
       /* Decode entropy-coded data in this ECS, convert to pixel values, and enter in `raster` */
       if (this.frameData.coding === 'huffman') {
@@ -504,6 +493,22 @@ class JPEG {
 
   readProgressiveScan(buffer, index) {
     throw new Error("Not implemented yet");
+  }
+
+  extractEntropyCodedSegment(buffer, index) {
+    /* Search for end of this entropy-coded segment */
+    var ecsEnd = buffer.indexOf(0xFF, index);
+    while (ecsEnd !== -1 && buffer[ecsEnd+1] == 0) /* byte stuffing */
+      ecsEnd = buffer.indexOf(0xFF, ecsEnd+2);
+    if (ecsEnd === -1)
+      throw new Error("Unterminated scan section");
+
+    /* Extract data for ECS and remove byte stuffing (convert 0xFF00 -> 0xFF) */
+    const ecs = Buffer.allocUnsafe(ecsEnd - index);
+    buffer.copy(ecs, 0, index, ecsEnd);
+    this.removeByteStuffing(ecs);
+
+    return [ecs, ecsEnd];
   }
 
   readHuffmanCodedSegment(raster, header, ecs, nextMcu, lastMcu, blocksPerMcu, maxHorizSampling, maxVertSampling) {
