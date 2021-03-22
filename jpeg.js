@@ -102,6 +102,11 @@ class JPEG {
     this.acDecoders = [];
     this.quantTables = [];
     this.frameData = undefined;
+    this.maxHorizSampling = undefined;
+    this.maxVertSampling = undefined;
+    this.mcuPixelWidth = undefined;
+    this.mcuPixelHeight = undefined;
+    this.totalMcus = undefined;
     this.restartInterval = 0; /* TODO: should be reset to zero on 'Start of Image' marker */
   }
 
@@ -194,6 +199,12 @@ class JPEG {
 
   handleFrameHeader(buffer, index) {
     this.frameData = this.readFrameHeader(buffer, index);
+    this.maxHorizSampling = this.frameData.components.reduce((max,c) => Math.max(max, c.horizSampling), 0);
+    this.maxVertSampling = this.frameData.components.reduce((max,c) => Math.max(max, c.vertSampling), 0);
+    this.mcuPixelWidth = 8 * this.maxHorizSampling;
+    this.mcuPixelHeight = 8 * this.maxVertSampling;
+    /* How many MCUs will it take to complete the whole image? */
+    this.totalMcus = Math.ceil(this.frameData.width / this.mcuPixelWidth) * Math.ceil(this.frameData.height / this.mcuPixelHeight);
   }
 
   dumpRestartInterval(buffer, index) {
@@ -435,9 +446,7 @@ class JPEG {
       }
     }
 
-    result.maxHorizSampling = components.reduce((max,c) => Math.max(max, c.horizSampling), 0);
-    result.maxVertSampling  = components.reduce((max,c) => Math.max(max, c.vertSampling), 0);
-    result.blocksPerMcu     = components.reduce((sum,c) => sum + (c.horizSampling * c.vertSampling), 0);
+    result.blocksPerMcu = components.reduce((sum,c) => sum + (c.horizSampling * c.vertSampling), 0);
     return result;
   }
 
@@ -461,9 +470,7 @@ class JPEG {
      *
      * If a restart interval has been defined, each ECS should contain the specified
      * number of MCUs. Otherwise, it should be enough MCUs to complete the image */
-    const mcuPxWidth  = 8 * header.maxHorizSampling;
-    const mcuPxHeight = 8 * header.maxVertSampling;
-    const mcusPerSegment = this.restartInterval || Math.ceil(this.frameData.width / mcuPxWidth) * Math.ceil(this.frameData.height / mcuPxHeight);
+    const mcusPerSegment = this.restartInterval || this.totalMcus;
     var mcuNumber = 0;
 
     /* Decode any number of entropy-coded segments delimited by restart markers */
@@ -620,24 +627,24 @@ class JPEG {
   /* When different image components have a different resolution, take one MCU's
    * worth of 8x8 blocks of samples and scale each component as needed so all are
    * at the same resolution */
-  alignSamples(components, samples, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling) {
+  alignSamples(components, samples) {
     const result = new Array(components.length);
 
     var blockIndex = 0;
     for (var i = 0; i < components.length; i++) {
-      const array = result[i] = new Array(mcuPxWidth * mcuPxHeight);
+      const array = result[i] = new Array(this.mcuPixelWidth * this.mcuPixelHeight);
       const component = components[i];
       /* Iterate over blocks which carry data for this image component */
       for (var blockY = 0; blockY < component.vertSampling; blockY++) {
         for (var blockX = 0; blockX < component.horizSampling; blockX++) {
           const block  = samples[blockIndex++];
-          const xScale = maxHorizSampling / component.horizSampling;
-          const yScale = maxVertSampling  / component.vertSampling;
+          const xScale = this.maxHorizSampling / component.horizSampling;
+          const yScale = this.maxVertSampling  / component.vertSampling;
           const xShift = Math.log2(xScale);
           const yShift = Math.log2(yScale);
           for (var y = 0; y < 8 * yScale; y++) {
             for (var x = 0; x < 8 * xScale; x++) {
-              array[(y + (blockY * 8 * yScale))*mcuPxWidth + (x + (blockX * 8 * xScale))] = block[(y >> yShift)*8 + (x >> xShift)];
+              array[(y + (blockY * 8 * yScale))*this.mcuPixelWidth + (x + (blockX * 8 * xScale))] = block[(y >> yShift)*8 + (x >> xShift)];
             }
           }
         }
@@ -814,17 +821,15 @@ class JPEG {
 
   paintPixels(raster, samples, header, mcuNumber) {
     const components = header.components;
-    const mcuPxWidth = 8 * header.maxHorizSampling;
-    const mcuPxHeight = 8 * header.maxVertSampling;
 
     /* First figure out where in the raster these pixels are located */
-    const xStart = (mcuNumber % Math.ceil(this.frameData.width / mcuPxWidth)) * mcuPxWidth;
-    const yStart = Math.floor(mcuNumber / Math.ceil(this.frameData.width / mcuPxWidth)) * mcuPxHeight;
-    const xEnd   = Math.min(xStart + mcuPxWidth, this.frameData.width);
-    const yEnd   = Math.min(yStart + mcuPxHeight, this.frameData.height);
+    const xStart = (mcuNumber % Math.ceil(this.frameData.width / this.mcuPixelWidth)) * this.mcuPixelWidth;
+    const yStart = Math.floor(mcuNumber / Math.ceil(this.frameData.width / this.mcuPixelWidth)) * this.mcuPixelHeight;
+    const xEnd   = Math.min(xStart + this.mcuPixelWidth, this.frameData.width);
+    const yEnd   = Math.min(yStart + this.mcuPixelHeight, this.frameData.height);
 
     if (components.length == 3) {
-      if (header.maxHorizSampling == 1 && header.maxVertSampling == 1) {
+      if (this.maxHorizSampling == 1 && this.maxVertSampling == 1) {
         /* All image components have the same resolution */
         this.paintYCbCrPixels(raster, samples, 8, xStart, xEnd, yStart, yEnd);
       } else {
@@ -840,8 +845,8 @@ class JPEG {
          * component, libjpeg actually evaluates the IDCT at 16x16 points (for the low
          * resolution component only), even though the coefficients were originally derived
          * from 8x8 pixels. This is perhaps a smarter way to scale the 8x8 block up. */
-        const alignedSamples = this.alignSamples(components, samples, mcuPxWidth, mcuPxHeight, header.maxHorizSampling, header.maxVertSampling);
-        this.paintYCbCrPixels(raster, alignedSamples, mcuPxWidth, xStart, xEnd, yStart, yEnd);
+        const alignedSamples = this.alignSamples(components, samples);
+        this.paintYCbCrPixels(raster, alignedSamples, this.mcuPixelWidth, xStart, xEnd, yStart, yEnd);
       }
     } else if (components.length == 1) {
       /* Luminance-only (grayscale) color space */
