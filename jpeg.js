@@ -479,9 +479,7 @@ class JPEG {
       }
 
       if (buffer[ecsEnd+1] >= 0xD0 && buffer[ecsEnd+1] <= 0xD7) {
-        /* Restart marker; continue decoding the scan data
-         * Note that "previous DC coefficients" are reset to zero after each restart;
-         * that's why we re-initialize the `prevDcCoeffs` array above */
+        /* Restart marker; continue decoding the scan data */
         index = ecsEnd+2;
       } else {
         break;
