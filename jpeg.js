@@ -448,7 +448,7 @@ class JPEG {
 
     /* ECS encodes a series of "MCUs" or "minimum coded units"
      *
-     * Each MCU consists of (horizontalScalingFactor * verticalScalingFactor) 8x8 blocks
+     * Each MCU consists of (horizontalSamplingFactor * verticalSamplingFactor) 8x8 blocks
      * for component 1, then for component 2... up to the last component
      */
     var blocksPerMcu = 0, maxHorizSampling = 0, maxVertSampling = 0;
