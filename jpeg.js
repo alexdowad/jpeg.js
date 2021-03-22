@@ -786,7 +786,7 @@ class JPEG {
 
   inverseZigzagOrder(coefficients) {
     if (coefficients.length != 64)
-      throw new Error("Expected 64 coefficients");
+      throw new Error(`Expected 64 coefficients, got ${coefficients.length}`);
     var permutation = new Array(64);
     for (var i = 0; i < 64; i++)
       permutation[JPEG.zigzagSequence[i]] = coefficients[i];
