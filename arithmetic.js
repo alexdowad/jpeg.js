@@ -572,7 +572,7 @@ class Decoder {
        * estimating probability of positive/negative sign; a fixed probability
        * estimate is used instead. Also, the same index is shared for estimating
        * likelihood of getting 1 or -1. */
-      if (zigZagIndex <= threshold) {
+      if (zigZagIndex < threshold) {
         acCoefficients.push(this.decodeSignMagnitude(null, SN_SP, SN_SP, X1, acContext + Decoder.X2_low));
       } else {
         acCoefficients.push(this.decodeSignMagnitude(null, SN_SP, SN_SP, X1, acContext + Decoder.X2_high));
