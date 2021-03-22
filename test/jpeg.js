@@ -267,4 +267,12 @@ for (var i = 0; i < 64; i++) {
 var [jpg12, raster12] = JPEG.fromBytes(fs.readFileSync(__dirname + '/arithmetic1.jpg'));
 assertArray(Array.from(raster12), array12);
 
+/* Arithmetic-coded, half-white, half-red */
+var array13 = [];
+for (var i = 0; i < 8; i++)
+  array13 = array13.concat([255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    241, 15, 39, 241, 15, 39, 240, 15, 39, 241, 15, 39]);
+var [jpg13, raster13] = JPEG.fromBytes(fs.readFileSync(__dirname + '/arithmetic2.jpg'));
+assertArray(Array.from(raster13), array13);
+
 console.log("OK!");
