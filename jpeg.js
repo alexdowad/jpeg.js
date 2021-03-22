@@ -511,8 +511,6 @@ class JPEG {
   }
 
   readHuffmanCodedSegment(raster, header, ecs, nextMcu, lastMcu) {
-    const mcuPxWidth  = 8 * header.maxHorizSampling;
-    const mcuPxHeight = 8 * header.maxVertSampling;
     const samples = new Array(header.blocksPerMcu);
 
     /* For each image component, we need to track the last DC coefficient seen within
@@ -548,14 +546,12 @@ class JPEG {
       }
 
       /* Got one whole MCU, now convert samples to RGB color space and fill in raster */
-      this.paintPixels(raster, samples, header.components, nextMcu, mcuPxWidth, mcuPxHeight, header.maxHorizSampling, header.maxVertSampling);
+      this.paintPixels(raster, samples, header, nextMcu);
       nextMcu++;
     }
   }
 
   readArithmeticCodedSegment(raster, header, ecs, nextMcu, lastMcu) {
-    const mcuPxWidth = 8 * header.maxHorizSampling;
-    const mcuPxHeight = 8 * header.maxVertSampling;
     const samples = new Array(header.blocksPerMcu);
 
     const prevDcCoeffs = new Array(header.components.length).fill(0);
@@ -590,7 +586,7 @@ class JPEG {
         }
       }
 
-      this.paintPixels(raster, samples, header.components, nextMcu, mcuPxWidth, mcuPxHeight, header.maxHorizSampling, header.maxVertSampling);
+      this.paintPixels(raster, samples, header, nextMcu);
       nextMcu++;
     }
   }
@@ -817,7 +813,11 @@ class JPEG {
 
   /* Color space conversion */
 
-  paintPixels(raster, samples, components, mcuNumber, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling) {
+  paintPixels(raster, samples, header, mcuNumber) {
+    const components = header.components;
+    const mcuPxWidth = 8 * header.maxHorizSampling;
+    const mcuPxHeight = 8 * header.maxVertSampling;
+
     /* First figure out where in the raster these pixels are located */
     const xStart = (mcuNumber % Math.ceil(this.frameData.width / mcuPxWidth)) * mcuPxWidth;
     const yStart = Math.floor(mcuNumber / Math.ceil(this.frameData.width / mcuPxWidth)) * mcuPxHeight;
@@ -825,7 +825,7 @@ class JPEG {
     const yEnd   = Math.min(yStart + mcuPxHeight, this.frameData.height);
 
     if (components.length == 3) {
-      if (maxHorizSampling == 1 && maxVertSampling == 1) {
+      if (header.maxHorizSampling == 1 && header.maxVertSampling == 1) {
         /* All image components have the same resolution */
         this.paintYCbCrPixels(raster, samples, 8, xStart, xEnd, yStart, yEnd);
       } else {
@@ -841,7 +841,7 @@ class JPEG {
          * component, libjpeg actually evaluates the IDCT at 16x16 points (for the low
          * resolution component only), even though the coefficients were originally derived
          * from 8x8 pixels. This is perhaps a smarter way to scale the 8x8 block up. */
-        const alignedSamples = this.alignSamples(components, samples, mcuPxWidth, mcuPxHeight, maxHorizSampling, maxVertSampling);
+        const alignedSamples = this.alignSamples(components, samples, mcuPxWidth, mcuPxHeight, header.maxHorizSampling, header.maxVertSampling);
         this.paintYCbCrPixels(raster, alignedSamples, mcuPxWidth, xStart, xEnd, yStart, yEnd);
       }
     } else if (components.length == 1) {
