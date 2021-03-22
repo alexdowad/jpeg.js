@@ -458,12 +458,11 @@ class JPEG {
      *
      * Each MCU consists of (horizontalSamplingFactor * verticalSamplingFactor) 8x8 blocks
      * for component 1, then for component 2... up to the last component
-     */
+     *
+     * If a restart interval has been defined, each ECS should contain the specified
+     * number of MCUs. Otherwise, it should be enough MCUs to complete the image */
     const mcuPxWidth  = 8 * header.maxHorizSampling;
     const mcuPxHeight = 8 * header.maxVertSampling;
-
-    /* If a restart interval has been defined, each ECS should contain the specified
-     * number of MCUs. Otherwise, it should be enough MCUs to complete the image */
     const mcusPerSegment = this.restartInterval || Math.ceil(this.frameData.width / mcuPxWidth) * Math.ceil(this.frameData.height / mcuPxHeight);
     var mcuNumber = 0;
 
