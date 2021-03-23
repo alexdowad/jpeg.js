@@ -160,7 +160,7 @@ class JPEG {
 
     index += 10;
     while (nComponents-- > 0) {
-      const componentId   = buffer[index];
+      const componentId = buffer[index];
       /* Components with a larger sampling factor have higher resolution
        *
        * If a component has the highest sampling factor of all components in a certain
@@ -174,7 +174,7 @@ class JPEG {
       const horizSampling = buffer[index+1] >> 4;
       const vertSampling  = buffer[index+1] & 0xF;
       const quantTableIdx = buffer[index+2];
-      components[componentId-1] = {id: componentId, quantTable: quantTableIdx, horizSampling: horizSampling, vertSampling: vertSampling};
+      components[componentId-1] = { id: componentId, quantTable: quantTableIdx, horizSampling: horizSampling, vertSampling: vertSampling };
       index += 3;
     }
 
@@ -552,7 +552,7 @@ class JPEG {
       }
 
       /* Got one whole MCU, now convert samples to RGB color space and fill in raster */
-      this.paintPixels(raster, samples, header, nextMcu);
+      this.paintPixels(raster, samples, header.components, nextMcu);
       nextMcu++;
     }
   }
@@ -592,7 +592,7 @@ class JPEG {
         }
       }
 
-      this.paintPixels(raster, samples, header, nextMcu);
+      this.paintPixels(raster, samples, header.components, nextMcu);
       nextMcu++;
     }
   }
@@ -819,9 +819,7 @@ class JPEG {
 
   /* Color space conversion */
 
-  paintPixels(raster, samples, header, mcuNumber) {
-    const components = header.components;
-
+  paintPixels(raster, samples, components, mcuNumber) {
     /* First figure out where in the raster these pixels are located */
     const xStart = (mcuNumber % Math.ceil(this.frameData.width / this.mcuPixelWidth)) * this.mcuPixelWidth;
     const yStart = Math.floor(mcuNumber / Math.ceil(this.frameData.width / this.mcuPixelWidth)) * this.mcuPixelHeight;
