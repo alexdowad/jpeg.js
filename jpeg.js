@@ -50,7 +50,7 @@ class JPEG {
 
   static fromBytes = function(buffer) {
     const jpg = new JPEG();
-    var raster;
+    var raster, coefficients;
 
     var i = 0;
     while (true) {
@@ -83,12 +83,47 @@ class JPEG {
           break;
 
         case 0xDA:
-          raster = jpg.readBaselineScan(buffer, i);
+          if (jpg.frameData.progressive) {
+            if (!coefficients) {
+              /* `coefficients` will be an array of arrays; each sub-array will
+               * hold one block of 64 coefficients */
+              coefficients = [];
+              for (const component of jpg.frameData.components) {
+                const blocks = new Array(jpg.totalMcus * component.horizSampling * component.vertSampling);
+                for (var idx = 0; idx < blocks.length; idx++)
+                  blocks[idx] = new Array(64).fill(0);
+                coefficients.push(blocks);
+              }
+            }
+            jpg.readProgressiveScan(buffer, i, coefficients);
+          } else {
+            raster = jpg.readBaselineScan(buffer, i);
+          }
           break;
 
         case 0xDD:
           jpg.handleRestartInterval(buffer, i);
           break;
+      }
+    }
+
+    if (jpg.frameData.progressive) {
+      /* We should have all the coefficients decoded now; convert them to color
+       * values and fill in the raster */
+      raster = Buffer.alloc(3 * jpg.frameData.width * jpg.frameData.height);
+      var mcuNumber = 0;
+      while (mcuNumber < jpg.totalMcus) {
+        const mcu = [];
+        for (const component of jpg.frameData.components) {
+          for (var i = 0; i < component.horizSampling * component.vertSampling; i++) {
+            const coeff = coefficients[component.id-1].shift();
+            const quantTable = jpg.quantTables[component.quantTable].values;
+            const samples = jpg.inverseDCT(jpg.inverseZigzagOrder(jpg.dequantizeCoefficients(coeff, quantTable)));
+            mcu.push(samples);
+          }
+        }
+        jpg.paintPixels(raster, mcu, jpg.frameData.components, mcuNumber);
+        mcuNumber++;
       }
     }
 
@@ -433,12 +468,14 @@ class JPEG {
           spectralStart: selectionStart,
           spectralEnd: selectionEnd,
           approxBitHigh: approxBitPos >> 4,
-          approxBitLow: approxBitPos & 0xF
+          approxBitLow: approxBitPos & 0xF,
+          components: components
         };
       } else if (this.frameData.lossless) {
         result = {
-          predictor: selectionEnd,     /* This field has different meaning for lossless JPEGs */
-          pointTransform: approxBitPos /* Likewise */
+          predictor: selectionEnd,      /* This field has different meaning for lossless JPEGs */
+          pointTransform: approxBitPos, /* Likewise */
+          components: components
         };
       } else if (selectionStart || (selectionEnd !== 63) || approxBitPos) {
         /* The last scan header fields should have fixed values for sequential DCT-based JPEGs */
@@ -496,8 +533,38 @@ class JPEG {
     return raster;
   }
 
-  readProgressiveScan(buffer, index) {
-    throw new Error("Not implemented yet");
+  readProgressiveScan(buffer, index, coefficients) {
+    const header = this.readScanHeader(buffer, index);
+    index += buffer.readUInt16BE(index+2) + 2; /* Go past end of scan header */
+
+    /* Unlike a baseline scan, which encodes all the data for an entire image,
+     * each progressive scan carries only part of the image data. A progressive
+     * scan may only encode some of the coefficients for each block of the image,
+     * and it may not carry all the bits for each coefficient.
+     *
+     * Enter all the data found in this scan in `coefficients`; an array of arrays,
+     * with a outer array for each image component, and an inner array for each
+     * block of 64 coefficients */
+
+    const mcusPerSegment = this.restartInterval || this.totalMcus;
+    var mcuNumber = 0;
+
+    while (true) {
+      const [ecs, ecsEnd] = this.extractEntropyCodedSegment(buffer, index);
+
+      if (this.frameData.coding === 'huffman') {
+        this.readProgressiveHuffmanCodedSegment(coefficients, header, ecs, mcuNumber, mcuNumber + mcusPerSegment);
+      } else {
+        this.readProgressiveArithmeticCodedSegment(coefficients, header, ecs, mcuNumber, mcuNumber + mcusPerSegment);
+      }
+      mcuNumber += mcusPerSegment;
+
+      if (buffer[ecsEnd+1] >= 0xD0 && buffer[ecsEnd+1] <= 0xD7) {
+        index = ecsEnd+2;
+      } else {
+        break;
+      }
+    }
   }
 
   extractEntropyCodedSegment(buffer, index) {
@@ -597,6 +664,62 @@ class JPEG {
     }
   }
 
+  readProgressiveHuffmanCodedSegment(coefficients, header, ecs, nextMcu, lastMcu) {
+    /* Which coefficients are encoded in this scan? And which bits for each coefficient? */
+    const { components, spectralStart, spectralEnd, approxBitLow, approxBitHigh } = header;
+
+    var prevDcCoeffs;
+    if (approxBitHigh === 0) {
+      prevDcCoeffs = new Array(components.length).fill(0);
+    }
+
+    var bytePos = 0, bitPos = 0, zeroBands = 0;
+    while (nextMcu < lastMcu && bytePos < ecs.length) {
+      for (var componentIndex = 0; componentIndex < components.length; componentIndex++) {
+        const component  = components[componentIndex];
+        const dcDecoder  = this.dcDecoders[component.dcTable];
+        const acDecoder  = this.acDecoders[component.acTable];
+        var   blockIndex = nextMcu * component.vertSampling * component.horizSampling;
+
+        for (var i = 0; i < component.vertSampling; i++) {
+          for (var j = 0; j < component.horizSampling; j++) {
+            if (approxBitHigh === 0) {
+              /* This is the first scan which provides approximate coefficients with
+               * indices in `spectralStart`..`spectralEnd` for the current image component.
+               * The manner of encoding these approximate coefficients is just like a baseline scan */
+              if (zeroBands) {
+                /* A previous band of coefficients had an 'end of band' marker indicating this
+                 * band is filled with zeros */
+                coefficients[component.id-1][blockIndex++].fill(0, spectralStart, spectralEnd+1)
+                zeroBands--;
+              } else {
+                const prevDcCoeff = prevDcCoeffs[componentIndex];
+                var band;
+                [bytePos, bitPos, band, zeroBands] = this.readHuffmanSampleBlock(ecs, bytePos, bitPos, ecs.length, prevDcCoeff, dcDecoder, acDecoder, spectralStart, spectralEnd);
+                if (spectralStart === 0) {
+                  prevDcCoeffs[componentIndex] = band[0];
+                }
+                coefficients[component.id-1][blockIndex++].splice(spectralStart, band.length, ...band);
+              }
+            } else {
+              /* This is a subsequent scan which provides more low-end bits for each
+               * coefficient with index between `spectralStart` and `spectralEnd` */
+              const block = coefficients[component.id-1][blockIndex++];
+              if (zeroBands) {
+                [bytePos, bitPos] = this.readSuccessiveApproximationBits(block, spectralStart, spectralEnd + 1, false, ecs, bytePos, bitPos);
+                zeroBands--;
+              } else {
+                [bytePos, bitPos, zeroBands] = this.refineApproximateHuffmanCoefficients(block, ecs, bytePos, bitPos, ecs.length, dcDecoder, acDecoder, spectralStart, spectralEnd);
+              }
+            }
+          }
+        }
+      }
+
+      nextMcu++;
+    }
+  }
+
   /* JPEG encodes 0xFF bytes in compressed data as 0xFF00;
    * reverse that encoding to recover the original compressed data
    *
@@ -656,8 +779,11 @@ class JPEG {
 
   /* Entropy coded segments */
 
-  readHuffmanSampleBlock(buffer, index, bitIndex, end, prevDcCoeff, dcDecoder, acDecoder) {
-    /* First find the DC coefficient for this 8x8 block of samples
+  readHuffmanSampleBlock(buffer, index, bitIndex, end, prevDcCoeff, dcDecoder, acDecoder, spectralStart=0, spectralEnd=63) {
+    /* For a baseline scan, read a 8x8 block of 64 coefficients
+     * For a progressive scan, read only coefficients with indices from `spectralStart`..`spectralEnd`
+     *
+     * First is the DC coefficient for this block
      *
      * It is encoded as a 'magnitude category' (which is entropy-coded)
      * and some subsequent bits
@@ -667,33 +793,47 @@ class JPEG {
      * is for -3, -2, 2, and 3, etc...
      *
      * Further, it is offset by the value of the DC coefficient for the previous block */
+
+    const coefficients = [];
     var magnitude, extraBits;
-    [index, bitIndex, magnitude] = huffman.decodeOne(buffer, index, end, bitIndex, dcDecoder);
-    [index, bitIndex, extraBits] = this.readBits(buffer, index, bitIndex, magnitude);
+    if (spectralStart === 0) {
+      [index, bitIndex, magnitude] = huffman.decodeOne(buffer, index, end, bitIndex, dcDecoder);
+      [index, bitIndex, extraBits] = this.readBits(buffer, index, bitIndex, magnitude);
+      const dcCoeff = this.decodeMagnitudeAndBits(magnitude, extraBits) + prevDcCoeff;
+      coefficients.push(dcCoeff);
+    }
 
-    const dcCoeff = this.decodeMagnitudeAndBits(magnitude, extraBits) + prevDcCoeff;
-
-    /* Now we start finding the 63 AC coefficients for this block */
-    const coefficients = [dcCoeff];
-    while (coefficients.length < 64) {
+    /* Now we start finding the AC coefficients for this block */
+    const nCoefficients = spectralEnd - spectralStart + 1;
+    while (coefficients.length < nCoefficients) {
       /* Read an 8-bit, huffman-coded value in which the high 4 bits are the number
        * of preceding zeros (i.e. run-length encoding for zeroes only) and the low
        * 4 bits are the magnitude of the following AC coefficient */
-      var composite, precedingZeroes;
+      var composite;
       [index, bitIndex, composite] = huffman.decodeOne(buffer, index, end, bitIndex, acDecoder);
 
-      /* There are 2 special values we need to check for */
-      if (composite == 0) {
+      /* Check for special values */
+      if (composite === 0) {
         /* 0 means 'end of block'; fill the rest of the AC coefficients with zeroes */
-        while (coefficients.length < 64)
+        while (coefficients.length < nCoefficients)
           coefficients.push(0);
-      } else if (composite == 0xF0) {
+      } else if (composite === 0xF0) {
         /* 0xF0 means '16 consecutive zeroes' */
         for (var i = 0; i < 16; i++)
           coefficients.push(0);
+      } else if ((composite & 0xF) === 0) {
+        /* For progressive scans only; this encodes a run of 'end of band' markers
+         * It means that for some number of successive blocks, all the coefficients
+         * between `spectralStart` and `spectralEnd` are zero */
+        var zeroBands;
+        [index, bitIndex, zeroBands] = this.readBits(buffer, index, bitIndex, composite >> 4);
+        zeroBands += (1 << (composite >> 4));
+        while (coefficients.length < nCoefficients)
+          coefficients.push(0);
+        return [index, bitIndex, coefficients, zeroBands];
       } else {
         /* Regular AC coefficient */
-        precedingZeroes = composite >> 4;
+        var precedingZeroes = composite >> 4;
         magnitude = composite & 0xF;
         [index, bitIndex, extraBits] = this.readBits(buffer, index, bitIndex, magnitude);
         const acCoeff = this.decodeMagnitudeAndBits(magnitude, extraBits);
@@ -713,6 +853,93 @@ class JPEG {
     const coefficients = decoder.decodeACCoefficients(acContext, acTable.threshold);
     coefficients.unshift(dcCoeff);
     return [coefficients, dcDelta];
+  }
+
+  refineApproximateHuffmanCoefficients(coefficients, buffer, index, bitIndex, end, dcDecoder, acDecoder, spectralStart, spectralEnd) {
+    var zigZagIndex = spectralStart;
+
+    if (zigZagIndex === 0) {
+      /* A different encoding is used for successive approximation of DC coefficients;
+       * the added bits for each DC coefficient are simply concatenated, without any
+       * compression or anything else special */
+      var bit;
+      [index, bitIndex, bit] = this.readBits(buffer, index, bitIndex, 1);
+      coefficients[0] = (coefficients[0] << 1) | bit;
+      zigZagIndex++;
+    }
+
+    while (zigZagIndex <= spectralEnd) {
+      var composite;
+      [index, bitIndex, composite] = huffman.decodeOne(buffer, index, end, bitIndex, acDecoder);
+
+      if (composite === 0) {
+        /* End of block */
+        return this.readSuccessiveApproximationBits(coefficients, zigZagIndex, spectralEnd + 1, false, buffer, index, bitIndex);
+      } else if (composite === 0xF0) {
+        var zeroes = 16;
+        for (var i = 0; i < zeroes; i++)
+          if (coefficients[zigZagIndex + i] !== 0)
+            zeroes++;
+        [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, zigZagIndex + zeroes, true, buffer, index, bitIndex);
+        zigZagIndex += zeroes;
+      } else if ((composite & 0xF) === 0) {
+        var zeroBands;
+        [index, bitIndex, zeroBands] = this.readBits(buffer, index, bitIndex, composite >> 4);
+        zeroBands += (1 << (composite >> 4));
+        [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, spectralEnd + 1, false, buffer, index, bitIndex);
+        return [index, bitIndex, zeroBands];
+      } else {
+        var precedingZeroes = composite >> 4;
+        for (var i = 0; i < precedingZeroes; i++)
+          if (coefficients[zigZagIndex + i] !== 0)
+            precedingZeroes++;
+        [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, zigZagIndex + precedingZeroes, true, buffer, index, bitIndex);
+        zigZagIndex += precedingZeroes + 1;
+      }
+    }
+
+    return [index, bitIndex];
+  }
+
+  /* For progressive scans which use successive approximation; read a series of bits
+   * which need to be appended to the low-end of non-zero coefficients
+   *
+   * They may be preceded by a single bit which encodes a 1/-1 value for the last
+   * coefficient in the range of interest */
+  readSuccessiveApproximationBits(coefficients, start, end, readSignBit, buffer, index, bitIndex) {
+    var bitsNeeded = readSignBit ? 1 : 0;
+    for (var i = start; i < end; i++)
+      if (coefficients[i] !== 0)
+        bitsNeeded++;
+
+    while (bitsNeeded > 0) {
+      /* Bitwise arithmetic in Java simply does not work on bitfields larger than 32 bits
+       * (Even if we're running on a 64-bit CPU...) */
+      const nBits = Math.min(bitsNeeded, 31);
+      var bits;
+      [index, bitIndex, bits] = this.readBits(buffer, index, bitIndex, nBits);
+      bitsNeeded -= nBits;
+      var mask = 1 << (nBits - 1);
+
+      if (readSignBit) {
+        coefficients[end] = ((bits & mask) !== 0) ? 1 : -1;
+        mask >>= 1;
+        readSignBit = false;
+      }
+
+      for (var i = start; i < end; i++) {
+        if (coefficients[i] !== 0) {
+          coefficients[i] = (coefficients[i] << 1) + (((bits & mask) !== 0) ? (coefficients[i] > 0 ? 1 : -1) : 0);
+          mask >>= 1;
+          if (!mask) {
+            start = i + 1;
+            break;
+          }
+        }
+      }
+    }
+
+    return [index, bitIndex];
   }
 
   /* Read some number of consecutive bits out of `buffer`, starting from specified position */
@@ -738,13 +965,13 @@ class JPEG {
 
     /* Read some number of whole bytes */
     while (nBits >= 8) {
-      result = (result << 8) + buffer[index++];
+      result = (result << 8) | buffer[index++];
       nBits -= 8;
     }
 
     /* Then any bits we need from the first part of the subsequent byte */
     if (nBits) {
-      result = (result << nBits) + (buffer[index] >> (8 - nBits));
+      result = (result << nBits) | (buffer[index] >> (8 - nBits));
       bitIndex = nBits;
     }
 
