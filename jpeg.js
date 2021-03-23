@@ -277,7 +277,7 @@ class JPEG {
       nextCode <<= 1;
     }
 
-    return {type: tableClass, number: tableNumber, codes: codes, start: index, end: nextValueIndex};
+    return { type: tableClass, number: tableNumber, codes: codes, start: index, end: nextValueIndex };
   }
 
   /* `index` points at segment marker */
@@ -388,10 +388,10 @@ class JPEG {
       for (var offset = 1; offset <= 128; offset += 2) {
         values.push(buffer.readUInt16BE(index + offset));
       }
-      return {precision: 16, number: tableNumber, values: values, start: index, end: index + 129};
+      return { precision: 16, number: tableNumber, values: values, start: index, end: index + 129 };
     } else {
       const values = Array.from(buffer.slice(index+1, index+65));
-      return {precision: 8, number: tableNumber, values: values, start: index, end: index + 65};
+      return { precision: 8, number: tableNumber, values: values, start: index, end: index + 65 };
     }
   }
 
