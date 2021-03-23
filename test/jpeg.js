@@ -322,4 +322,12 @@ assertArray(Array.from(raster14), array14);
 var [jpg15, raster15] = JPEG.fromBytes(fs.readFileSync(__dirname + '/progressive0.jpg'));
 assertArray(Array.from(raster15), new Array(64 * 3).fill(255));
 
+/* Progressive, half-white half-red */
+var array16 = [];
+for (var i = 0; i < 8; i++)
+  array16 = array16.concat([254, 0, 0, 254, 0, 0, 254, 0, 0, 254, 0, 0,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]);
+var [jpg16, raster16] = JPEG.fromBytes(fs.readFileSync(__dirname + '/progressive1.jpg'));
+assertArray(Array.from(raster16), array16);
+
 console.log("OK!");
