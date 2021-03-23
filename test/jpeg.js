@@ -317,4 +317,9 @@ var array14 = [
 var [jpg14, raster14] = JPEG.fromBytes(fs.readFileSync(__dirname + '/arithmetic3.jpg'));
 assertArray(Array.from(raster14), array14);
 
+/* Now progressive JPEGs
+ * This one is flat white, the same as #2 */
+var [jpg15, raster15] = JPEG.fromBytes(fs.readFileSync(__dirname + '/progressive0.jpg'));
+assertArray(Array.from(raster15), new Array(64 * 3).fill(255));
+
 console.log("OK!");
