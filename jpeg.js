@@ -875,26 +875,21 @@ class JPEG {
       if (composite === 0) {
         /* End of block */
         return this.readSuccessiveApproximationBits(coefficients, zigZagIndex, spectralEnd + 1, false, buffer, index, bitIndex);
-      } else if (composite === 0xF0) {
-        var zeroes = 16;
-        for (var i = 0; i < zeroes; i++)
-          if (coefficients[zigZagIndex + i] !== 0)
-            zeroes++;
-        [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, zigZagIndex + zeroes, true, buffer, index, bitIndex);
-        zigZagIndex += zeroes;
-      } else if ((composite & 0xF) === 0) {
+      } else if ((composite & 0xF) === 0 && composite !== 0xF0) {
         var zeroBands;
         [index, bitIndex, zeroBands] = this.readBits(buffer, index, bitIndex, composite >> 4);
         zeroBands += (1 << (composite >> 4));
         [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, spectralEnd + 1, false, buffer, index, bitIndex);
         return [index, bitIndex, zeroBands];
       } else {
-        var precedingZeroes = composite >> 4;
-        for (var i = 0; i < precedingZeroes; i++)
+        if ((composite & 0xF) !== 1)
+          throw new Error("On successive approximation refinement scan, magnitude of encoded coefficients must be 1");
+        var skipAhead = (composite === 0xF0) ? 16 : composite >> 4;
+        for (var i = 0; i < skipAhead; i++)
           if (coefficients[zigZagIndex + i] !== 0)
-            precedingZeroes++;
-        [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, zigZagIndex + precedingZeroes, true, buffer, index, bitIndex);
-        zigZagIndex += precedingZeroes + 1;
+            skipAhead++;
+        [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, zigZagIndex + skipAhead, true, buffer, index, bitIndex);
+        zigZagIndex += skipAhead + 1;
       }
     }
 
