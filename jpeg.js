@@ -939,6 +939,8 @@ class JPEG {
 
   /* Read some number of consecutive bits out of `buffer`, starting from specified position */
   readBits(buffer, index, bitIndex, nBits) {
+    if (nBits > 32)
+      throw new Error("readBits can only return up to 32 bits at a time");
     var result = 0;
 
     /* Read some bits from the last part of a byte which was already partially consumed */
