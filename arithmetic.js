@@ -537,10 +537,10 @@ class Decoder {
   }
 
   /* Decode representation used by JPEG for AC coefficients */
-  decodeACCoefficients(acContext, threshold) {
+  decodeACCoefficients(acContext, threshold, spectralStart=1, spectralEnd=63) {
     const acCoefficients = [];
 
-    var zigZagIndex = 0;
+    var zigZagIndex = spectralStart-1;
     do {
       /* Context indices used for decoding this AC coefficient
        * Follow names in JPEG spec (see Table F.5) */
@@ -551,7 +551,7 @@ class Decoder {
 
       if (this.decodeBit(SE)) {
         /* End of block; the remaining coefficients are zero */
-        while (acCoefficients.length < 63)
+        while (acCoefficients.length <= (spectralEnd - spectralStart))
           acCoefficients.push(0);
         return acCoefficients;
       }
@@ -579,7 +579,7 @@ class Decoder {
       }
 
       zigZagIndex++;
-    } while(acCoefficients.length < 63);
+    } while (acCoefficients.length <= (spectralEnd - spectralStart));
 
     return acCoefficients;
   }
