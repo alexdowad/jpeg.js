@@ -1002,7 +1002,7 @@ class JPEG {
         bitsNeeded++;
 
     while (bitsNeeded > 0) {
-      /* Bitwise arithmetic in Java simply does not work on bitfields larger than 32 bits
+      /* Bitwise arithmetic in JavaScript simply does not work on bitfields larger than 32 bits
        * (Even if we're running on a 64-bit CPU...) */
       const nBits = Math.min(bitsNeeded, 31);
       var bits;
@@ -1021,6 +1021,8 @@ class JPEG {
           coefficients[i] = (coefficients[i] << 1) + (((bits & mask) !== 0) ? (coefficients[i] > 0 ? 1 : -1) : 0);
           mask >>= 1;
           if (!mask) {
+            /* We have used up the 31 bits retrieved above; go around the `while` loop
+             * again and get more data bits to refine the coefficient values */
             start = i + 1;
             break;
           }
