@@ -367,4 +367,9 @@ const array17 = [
 var [jpg17, raster17] = JPEG.fromBytes(fs.readFileSync(__dirname + '/progressive2.jpg'));
 assertArray(Array.from(raster17), array17);
 
+/* Progressive AND arithmetic-coded
+ * As usual, start with a flat white image */
+var [jpg18, raster18] = JPEG.fromBytes(fs.readFileSync(__dirname + '/prog-arith0.jpg'));
+assertArray(Array.from(raster18), new Array(64 * 3).fill(255));
+
 console.log("OK!");
