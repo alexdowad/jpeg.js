@@ -786,7 +786,7 @@ class JPEG {
                 }
 
                 if (block[zigZagIndex] !== 0) {
-                  block[zigZagIndex] = (block[zigZagIndex] << 1) | (decoder.decodeBit(SE+2) ? 1 : 0);
+                  block[zigZagIndex] = (block[zigZagIndex] << 1) + (decoder.decodeBit(SE+2) ? (block[zigZagIndex] > 0 ? 1 : -1) : 0);
                 } else if (decoder.decodeBit(SE+1)) {
                   /* This coefficient was zero in previous scans, but now we have reached its MSB
                    * Determine if it is positive or negative */
