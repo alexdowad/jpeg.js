@@ -720,6 +720,83 @@ class JPEG {
     }
   }
 
+  readProgressiveArithmeticCodedSegment(coefficients, header, ecs, nextMcu, lastMcu) {
+    const { components, spectralStart, spectralEnd, approxBitLow, approxBitHigh } = header;
+
+    var prevDcCoeffs, prevDcDeltas;
+    if (approxBitHigh === 0) {
+      prevDcCoeffs = new Array(components.length).fill(0);
+      prevDcDeltas = new Array(components.length).fill(0);
+    }
+
+    /* TODO: I think we need to keep the same decoder
+     * If a new dcTable or acTable is defined... that should wipe out probability 'contexts' for that table...
+     * But each 'Decoder' object is also associated with an array of input bytes... */
+    const decoder = new arithmetic.Decoder((49 * this.dcTables.length) + (245 * this.acTables.length), Array.from(ecs));
+
+    while (nextMcu < lastMcu) {
+      for (var componentIndex = 0; componentIndex < components.length; componentIndex++) {
+        const component  = components[componentIndex];
+        const quantTable = this.quantTables[component.quantTable].values;
+        const dcTable    = this.dcTables[component.dcTable] || { lowThreshold: 0, highThreshold: 2 };
+        const acTable    = this.acTables[component.acTable] || { threshold: 5 };
+        const dcContext  = component.dcTable * 49;
+        const acContext  = (this.dcTables.length * 49) + (component.acTable * 245);
+        var   blockIndex = nextMcu * component.vertSampling * component.horizSampling;
+
+        for (var i = 0; i < component.vertSampling; i++) {
+          for (var j = 0; j < component.horizSampling; j++) {
+            if (approxBitHigh === 0) {
+              /* This is the first progressive scan covering this range of coefficients;
+               * Retrieve the high-order bits for each one */
+              const [prevDcCoeff, prevDcDelta] = [prevDcCoeffs[componentIndex], prevDcDeltas[componentIndex]];
+              const [band, dcDelta] = this.readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcContext, acContext, spectralStart, spectralEnd)
+              if (spectralStart === 0) {
+                prevDcCoeffs[componentIndex] = band[0];
+                prevDcDeltas[componentIndex] = dcDelta;
+              }
+              coefficients[component.id-1][blockIndex++].splice(spectralStart, band.length, ...band);
+            } else {
+              /* Successive approximation; refine approximate coefficients by adding low-order bits
+               * First add a low-order bit to the DC coefficient, if it is included in this scan */
+              const block = coefficients[component.id-1][blockIndex++];
+              if (spectralStart === 0) {
+                const [lowBit,] = decoder.decodeDecision(0x5A1D, false)
+                block[0] = (block[0] << 1) | (lowBit ? 1 : 0);
+              }
+
+              /* Now add low-order bits to the AC coefficients in this scan */
+              for (var zigZagIndex = spectralStart || 1; zigZagIndex <= spectralEnd; zigZagIndex++) {
+                const SE = acContext + (3 * zigZagIndex);
+                /* Are we at 'end of band'?
+                 * EOB will always be at the same position _or later_ than it was on the previous progressive
+                 * scan covering these coefficients, so for positions before that, no 'EOB?' bit is encoded */
+                if ((!component.prevEOBIndex || zigZagIndex >= component.prevEOBIndex) && decoder.decodeBit(SE)) {
+                  /* We've reached end of band; the remaining bits are all zeroes */
+                  component.prevEOBIndex = zigZagIndex;
+                  while (zigZagIndex <= spectralEnd)
+                      block[zigZagIndex++] <<= 1;
+                  break;
+                }
+
+                if (block[zigZagIndex] !== 0) {
+                  block[zigZagIndex] = (block[zigZagIndex] << 1) | (decoder.decodeBit(SE+2) ? 1 : 0);
+                } else if (decoder.decodeBit(SE+1)) {
+                  /* This coefficient was zero in previous scans, but now we have reached its MSB
+                   * Determine if it is positive or negative */
+                  const [signBit,] = decoder.decodeDecision(0x5A1D, false);
+                  block[zigZagIndex] = signBit ? -1 : 1;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      nextMcu++;
+    }
+  }
+
   /* JPEG encodes 0xFF bytes in compressed data as 0xFF00;
    * reverse that encoding to recover the original compressed data
    *
@@ -847,11 +924,22 @@ class JPEG {
     return [index, bitIndex, coefficients];
   }
 
-  readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcContext, acContext) {
-    const dcDelta = decoder.decodeDCCoefficientDelta(dcContext, prevDcDelta, dcTable.lowThreshold, dcTable.highThreshold);
-    const dcCoeff = prevDcCoeff + dcDelta;
-    const coefficients = decoder.decodeACCoefficients(acContext, acTable.threshold);
-    coefficients.unshift(dcCoeff);
+  readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcContext, acContext, spectralStart=0, spectralEnd=63) {
+    var dcCoeff, dcDelta;
+    if (spectralStart === 0) {
+      dcDelta = decoder.decodeDCCoefficientDelta(dcContext, prevDcDelta, dcTable.lowThreshold, dcTable.highThreshold);
+      dcCoeff = prevDcCoeff + dcDelta;
+    }
+
+    var coefficients;
+    if (spectralEnd !== 0)
+      coefficients = decoder.decodeACCoefficients(acContext, acTable.threshold, (spectralStart === 0) ? 1 : spectralStart, spectralEnd);
+    else
+      coefficients = [];
+
+    if (spectralStart === 0) {
+      coefficients.unshift(dcCoeff);
+    }
     return [coefficients, dcDelta];
   }
 
