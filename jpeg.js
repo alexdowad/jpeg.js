@@ -768,10 +768,16 @@ class JPEG {
               /* Now add low-order bits to the AC coefficients in this scan */
               for (var zigZagIndex = spectralStart || 1; zigZagIndex <= spectralEnd; zigZagIndex++) {
                 const SE = acContext + (3 * zigZagIndex);
+
+                var trailingZeroIndex = spectralEnd;
+                while (!block[trailingZeroIndex] && trailingZeroIndex >= 0)
+                  trailingZeroIndex--;
+                trailingZeroIndex++;
+
                 /* Are we at 'end of band'?
                  * EOB will always be at the same position _or later_ than it was on the previous progressive
                  * scan covering these coefficients, so for positions before that, no 'EOB?' bit is encoded */
-                if ((!component.prevEOBIndex || zigZagIndex >= component.prevEOBIndex) && decoder.decodeBit(SE)) {
+                if (zigZagIndex >= trailingZeroIndex && decoder.decodeBit(SE)) {
                   /* We've reached end of band; the remaining bits are all zeroes */
                   component.prevEOBIndex = zigZagIndex;
                   while (zigZagIndex <= spectralEnd)
