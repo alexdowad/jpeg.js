@@ -69,6 +69,11 @@ while (true) {
       jpg.dumpJfifHeader(data, i);
       break;
 
+    case 0xE1: /* EXIF header */
+      console.log(`${offset}: EXIF header`);
+      jpg.dumpExifHeader(data, i);
+      break;
+
     case 0xFE: /* Comment */
       const commentEnd = data.indexOf(0xFF, i+2);
       /* I found a comment which started with 0x00 0x0D... the use of index `i+4`

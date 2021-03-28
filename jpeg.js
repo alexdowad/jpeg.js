@@ -2,6 +2,7 @@
 
 const huffman = require('./huffman.js');
 const arithmetic = require('./arithmetic.js');
+const exif = require('./exif.js');
 
 class JPEG {
   /* In a JPEG file, any byte which follows 0xFF is a marker */
@@ -171,6 +172,95 @@ class JPEG {
   dumpJfifHeader(buffer, index) {
     console.group();
     console.log(this.readJfifHeader(buffer, index));
+    console.groupEnd();
+  }
+
+  readExifHeader(buffer, index) {
+    if (buffer.readUInt16BE(index) !== 0xFFE1)
+      throw new Error("Invalid EXIF header (wrong marker)");
+    if (buffer.toString('binary', index+4, index+8) !== 'Exif')
+      return [];
+    const tiffHeader = index+10;
+
+    /* ASCII 'II' means little-endian (for 'Intel'), 'MM' means big-endian (for 'Motorola') */
+    const endiannessTag = buffer.toString('binary', tiffHeader, tiffHeader+2);
+    var readInt16, readInt32, readUInt16, readUInt32, readFloat32, readFloat64;
+    if (endiannessTag === 'II') {
+      readInt16   = buffer.readInt16LE.bind(buffer);
+      readInt32   = buffer.readInt32LE.bind(buffer);
+      readUInt16  = buffer.readUInt16LE.bind(buffer);
+      readUInt32  = buffer.readUInt32LE.bind(buffer);
+      readFloat32 = buffer.readFloatLE.bind(buffer);
+      readFloat64 = buffer.readDoubleLE.bind(buffer);
+    } else if (endiannessTag === 'MM') {
+      readInt16   = buffer.readInt16BE.bind(buffer);
+      readInt32   = buffer.readInt32BE.bind(buffer);
+      readUInt16  = buffer.readUInt16BE.bind(buffer);
+      readUInt32  = buffer.readUInt32BE.bind(buffer);
+      readFloat32 = buffer.readFloatBE.bind(buffer);
+      readFloat64 = buffer.readDoubleBE.bind(buffer);
+    } else {
+      throw new Error("Could not determine endianness of values in EXIF header");
+    }
+    const readInt8 = buffer.readInt8.bind(buffer), readUInt8 = buffer.readUInt8.bind(buffer);
+
+    /* Get offset to first IFD or Image File Directory entry */
+    var index = tiffHeader + readUInt32(tiffHeader+4);
+
+    const images = [];
+    while (index !== tiffHeader) {
+      var nEntries = readUInt16(index);
+      index += 2;
+
+      const imageData = [];
+      while (nEntries-- > 0) {
+        const tagNumber   = readUInt16(index);
+        const dataFormat  = readUInt16(index+2);
+        /* Size of a single data 'component'; must be multiplied by number of 'components' */
+        const dataSize    = [undefined, 1, 1, 2, 4, 8, 1, 1, 2, 4, 8, 4, 8][dataFormat];
+        const nComponents = readUInt32(index+4);
+        const dataOffset  = (dataSize * nComponents > 4) ? tiffHeader + readUInt32(index+8) : index+8;
+        const dataReadFn  = [undefined,
+          readUInt8, readUInt8, readUInt16, readUInt32, this.readRational(readUInt32),
+          readInt8,  readUInt8, readInt16,  readInt32,  this.readRational(readInt32),
+          readFloat32, readFloat64][dataFormat];
+
+        var value = this.readExifValue(dataOffset, dataSize, nComponents, dataReadFn);
+        if (dataFormat === 2)
+          value = (nComponents > 1) ? String.fromCharCode(...value) : String.fromCharCode(value);
+        imageData.push([tagNumber, exif.tags.get(tagNumber), value]);
+
+        index += 12;
+      }
+      images.push(imageData);
+
+      index = tiffHeader + readInt32(index);
+    }
+
+    return images;
+  }
+
+  readExifValue(offset, size, n, readFn) {
+    if (n == 1)
+      return readFn(offset);
+
+    const result = [];
+    while (n-- > 0) {
+      result.push(readFn(offset));
+      offset += size;
+    }
+    return result;
+  }
+
+  readRational(readValueFn) {
+    return function(offset) {
+      return [readValueFn(offset), readValueFn(offset+4)];
+    }
+  }
+
+  dumpExifHeader(buffer, index) {
+    console.group();
+    console.dir(this.readExifHeader(buffer, index), {depth: null});
     console.groupEnd();
   }
 
