@@ -277,6 +277,17 @@ class JPEG {
       return {};
 
     const length  = buffer.readUInt16BE(index+2);
+
+    /* ICC.1:2010 section B.4 says that an ICC color profile embedded in a JPEG
+     * file should have a 1-byte 'chunk number' immediately following the identifier.
+     * This is intended for cases where color profile data is split over multiple
+     * sections of the JPEG file.
+     *
+     * However, ITU-T T.872 section 6.5.2 does not say that a 'chunk number' should
+     * be used in such cases; rather, it says that the contents of all ICC color
+     * profile sections should automatically be concatenated together.
+     *
+     * I'm not sure which is actually followed in practice. */
     const chunkNo = buffer[index+16];
     const content = buffer.slice(index+17, index+length+2);
 
