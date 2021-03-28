@@ -79,6 +79,11 @@ while (true) {
       jpg.dumpICCColorProfile(data, i);
       break;
 
+    case 0xEE: /* Adobe color profile */
+      console.log(`${offset}: Adobe color profile`);
+      jpg.dumpAdobeColorProfile(data, i);
+      break;
+
     case 0xFE: /* Comment */
       const commentEnd = data.indexOf(0xFF, i+2);
       /* I found a comment which started with 0x00 0x0D... the use of index `i+4`

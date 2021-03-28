@@ -300,6 +300,24 @@ class JPEG {
     console.groupEnd();
   }
 
+  readAdobeColorProfile(buffer, index) {
+    if (buffer.readUInt16BE(index) !== 0xFFEE)
+      throw new Error("Invalid Adobe color profile (wrong marker)");
+    if (buffer.toString('binary', index+4, index+9) !== 'Adobe')
+      return {};
+
+    const transform = buffer[index+11];
+    if (transform > 2)
+      throw new Error("Invalid color transform specified in Adobe color profile");
+    return { color: ['CMYK/RGB', 'YCbCr', 'YCCK'][transform] };
+  }
+
+  dumpAdobeColorProfile(buffer, index) {
+    console.group();
+    console.log(this.readAdobeColorProfile(buffer, index));
+    console.groupEnd();
+  }
+
   /* Start of Frame */
 
   readFrameHeader(buffer, index) {
