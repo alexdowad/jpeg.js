@@ -273,11 +273,11 @@ class JPEG {
   /* Start of Frame */
 
   readFrameHeader(buffer, index) {
-    const marker      = buffer[index+1];
-    const lossless    = (marker == 0xC3 || marker == 0xC7 || marker == 0xCB);
-    const extended    = (marker == 0xC1 || marker == 0xC9);
-    const progressive = (marker == 0xC2 || marker == 0xC6 || marker == 0xCA || marker == 0xCE);
-    const arithmetic  = (marker >= 0xC9);
+    const marker       = buffer[index+1];
+    const lossless     = (marker == 0xC3 || marker == 0xC7 || marker == 0xCB);
+    const extended     = (marker == 0xC1 || marker == 0xC9);
+    const progressive  = (marker == 0xC2 || marker == 0xC6 || marker == 0xCA || marker == 0xCE);
+    const arithmetic   = (marker >= 0xC9);
     const differential = (marker == 0xC5 || marker == 0xC6 || marker == 0xC7 || marker == 0xCD || marker == 0xCE ||  marker == 0xCF);
 
     const length      = buffer.readUInt16BE(index+2);
