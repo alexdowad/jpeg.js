@@ -270,6 +270,25 @@ class JPEG {
     console.groupEnd();
   }
 
+  readICCColorProfile(buffer, index) {
+    if (buffer.readUInt16BE(index) !== 0xFFE2)
+      throw new Error("Invalid ICC color profile (wrong marker)");
+    if (buffer.toString('binary', index+4, index+15) !== 'ICC_PROFILE')
+      return {};
+
+    const length  = buffer.readUInt16BE(index+2);
+    const chunkNo = buffer[index+16];
+    const content = buffer.slice(index+17, index+length+2);
+
+    return { chunk: chunkNo, data: content };
+  }
+
+  dumpICCColorProfile(buffer, index) {
+    console.group();
+    console.log(this.readICCColorProfile(buffer, index));
+    console.groupEnd();
+  }
+
   /* Start of Frame */
 
   readFrameHeader(buffer, index) {
