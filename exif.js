@@ -73,4 +73,42 @@ const resolutionUnits = new Map([
   [2, 'Pixels/inch'],
   [3, 'Pixels/cm']]);
 
+const compressionTypes = new Map([
+  [1, 'None'],
+  [6, 'JPEG']]);
+
+const exposurePrograms = new Map([
+  [1, 'Manual Control'],
+  [2, 'Normal Program'],
+  [3, 'Aperture Priority'],
+  [4, 'Shutter Priority'],
+  [5, 'Slow Program'],
+  [6, 'High-speed Program'],
+  [7, 'Portrait Mode'],
+  [8, 'Landscape Mode']]);
+
+const meteringModes = new Map([
+  [1, 'Average'],
+  [2, 'Center-weighted Average'],
+  [3, 'Spot'],
+  [4, 'Multi-spot'],
+  [5, 'Multi-segment']]);
+
+const lightSources = new Map([
+  [0, 'Auto'],
+  [1, 'Daylight'],
+  [2, 'Fluorescent'],
+  [3, 'Tungsten'],
+  [10, 'Flash']]);
+
+const lookupTables = new Map([
+  [0x0112, orientationValues],
+  [0x0128, resolutionUnits],
+  [0xA210, resolutionUnits],
+  [0x0103, compressionTypes],
+  [0x8822, exposurePrograms],
+  [0x9207, meteringModes],
+  [0x9208, lightSources]]);
+
 module.exports.tags = exifTags;
+module.exports.lookupTables = lookupTables;

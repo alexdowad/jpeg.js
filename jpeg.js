@@ -226,8 +226,14 @@ class JPEG {
           readFloat32, readFloat64][dataFormat];
 
         var value = this.readExifValue(dataOffset, dataSize, nComponents, dataReadFn);
-        if (dataFormat === 2)
+        if (dataFormat === 2) {
           value = (nComponents > 1) ? String.fromCharCode(...value) : String.fromCharCode(value);
+        } else if (exif.lookupTables.has(tagNumber)) {
+          if (nComponents === 1)
+            value = exif.lookupTables.get(tagNumber).get(value) || value;
+          else
+            value = value.map((n) => exif.lookupTables.get(tagNumber).get(n) || n);
+        }
         imageData.push([tagNumber, exif.tags.get(tagNumber), value]);
 
         index += 12;
