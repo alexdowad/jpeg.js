@@ -1126,14 +1126,20 @@ class JPEG {
         [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, spectralEnd + 1, false, buffer, index, bitIndex);
         return [index, bitIndex, zeroBands];
       } else {
-        if ((composite & 0xF) !== 1)
-          throw new Error("On successive approximation refinement scan, magnitude of encoded coefficients must be 1");
-        var skipAhead = (composite === 0xF0) ? 16 : composite >> 4;
-        for (var i = 0; i < skipAhead; i++)
-          if (coefficients[zigZagIndex + i] !== 0)
-            skipAhead++;
-        [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, zigZagIndex + skipAhead, true, buffer, index, bitIndex);
-        zigZagIndex += skipAhead + 1;
+        if ((composite & 0xF) !== 1 && composite !== 0xF0)
+          throw new Error(`On successive approximation refinement scan, magnitude of encoded coefficients must be 1`);
+        var skipZeroes = (composite === 0xF0) ? 16 : composite >> 4;
+        var skipPositions = 0;
+        while (true) {
+          if (coefficients[zigZagIndex + skipPositions] === 0) {
+            if (skipZeroes === 0)
+              break;
+            skipZeroes--;
+          }
+          skipPositions++;
+        }
+        [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, zigZagIndex + skipPositions, true, buffer, index, bitIndex);
+        zigZagIndex += skipPositions + 1;
       }
     }
 
