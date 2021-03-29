@@ -79,6 +79,10 @@ class JPEG {
           jpg.handleConditioningSegment(buffer, i);
           break;
 
+        case 0xD8: /* Start of Image */
+          jpg.restartInterval = 0;
+          break;
+
         case 0xDA:
           if (jpg.frameData.progressive) {
             if (!coefficients) {
@@ -143,7 +147,7 @@ class JPEG {
     this.mcuPixelWidth = undefined;
     this.mcuPixelHeight = undefined;
     this.totalMcus = undefined;
-    this.restartInterval = 0; /* TODO: should be reset to zero on 'Start of Image' marker */
+    this.restartInterval = 0;
   }
 
   /* JFIF/EXIF file header */
