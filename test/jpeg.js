@@ -431,4 +431,8 @@ const array20 = [
 var [jpg20, raster20] = JPEG.fromBytes(fs.readFileSync(__dirname + '/prog-arith2.jpg'));
 assertArray(Array.from(raster20), array20);
 
+/* Flat white image; restart interval is LESS than total MCUs in image */
+var [jpg21, raster21] = JPEG.fromBytes(fs.readFileSync(__dirname + '/restart+subsampling.jpg'));
+assertArray(Array.from(raster21), new Array(3 * 11 * 11).fill(255));
+
 console.log("OK!");

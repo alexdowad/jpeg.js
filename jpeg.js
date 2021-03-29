@@ -651,7 +651,7 @@ class JPEG {
      *
      * If a restart interval has been defined, each ECS should contain the specified
      * number of MCUs. Otherwise, it should be enough MCUs to complete the image */
-    const mcusPerSegment = this.restartInterval || this.totalMcus;
+    const mcusPerSegment = this.restartInterval ? Math.min(this.restartInterval, this.totalMcus) : this.totalMcus;
     var mcuNumber = 0;
 
     /* Decode any number of entropy-coded segments delimited by restart markers */
@@ -690,7 +690,7 @@ class JPEG {
      * with a outer array for each image component, and an inner array for each
      * block of 64 coefficients */
 
-    const mcusPerSegment = this.restartInterval || this.totalMcus;
+    const mcusPerSegment = this.restartInterval ? Math.min(this.restartInterval, this.totalMcus) : this.totalMcus;
     var mcuNumber = 0;
 
     while (true) {
