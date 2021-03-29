@@ -79,10 +79,6 @@ class JPEG {
           jpg.handleConditioningSegment(buffer, i);
           break;
 
-        case 0xDB:
-          jpg.handleQuantizationSegment(buffer, i);
-          break;
-
         case 0xDA:
           if (jpg.frameData.progressive) {
             if (!coefficients) {
@@ -100,6 +96,10 @@ class JPEG {
           } else {
             raster = jpg.readBaselineScan(buffer, i);
           }
+          break;
+
+        case 0xDB:
+          jpg.handleQuantizationSegment(buffer, i);
           break;
 
         case 0xDD:
