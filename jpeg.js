@@ -812,6 +812,9 @@ class JPEG {
     /* Which coefficients are encoded in this scan? And which bits for each coefficient? */
     const { components, spectralStart, spectralEnd, approxBitLow, approxBitHigh } = header;
 
+    const minHoriz = components.reduce((min,c) => Math.min(min, c.horizSampling), Number.MAX_VALUE);
+    const minVert  = components.reduce((min,c) => Math.min(min, c.vertSampling), Number.MAX_VALUE);
+
     var prevDcCoeffs;
     if (approxBitHigh === 0) {
       prevDcCoeffs = new Array(components.length).fill(0);
@@ -823,10 +826,10 @@ class JPEG {
         const component  = components[componentIndex];
         const dcDecoder  = this.dcDecoders[component.dcTable];
         const acDecoder  = this.acDecoders[component.acTable];
-        var   blockIndex = nextMcu * component.vertSampling * component.horizSampling;
+        var   blockIndex = nextMcu * (component.vertSampling / minVert) * (component.horizSampling / minHoriz);
 
-        for (var i = 0; i < component.vertSampling; i++) {
-          for (var j = 0; j < component.horizSampling; j++) {
+        for (var i = 0; i < component.vertSampling / minVert; i++) {
+          for (var j = 0; j < component.horizSampling / minHoriz; j++) {
             if (approxBitHigh === 0) {
               /* This is the first scan which provides approximate coefficients with
                * indices in `spectralStart`..`spectralEnd` for the current image component.
@@ -867,6 +870,9 @@ class JPEG {
   readProgressiveArithmeticCodedSegment(coefficients, header, ecs, nextMcu, lastMcu) {
     const { components, spectralStart, spectralEnd, approxBitLow, approxBitHigh } = header;
 
+    const minHoriz = components.reduce((min,c) => Math.min(min, c.horizSampling), Number.MAX_VALUE);
+    const minVert  = components.reduce((min,c) => Math.min(min, c.vertSampling), Number.MAX_VALUE);
+
     var prevDcCoeffs, prevDcDeltas;
     if (approxBitHigh === 0) {
       prevDcCoeffs = new Array(components.length).fill(0);
@@ -886,10 +892,10 @@ class JPEG {
         const acTable    = this.acTables[component.acTable] || { threshold: 5 };
         const dcContext  = component.dcTable * 49;
         const acContext  = (this.dcTables.length * 49) + (component.acTable * 245);
-        var   blockIndex = nextMcu * component.vertSampling * component.horizSampling;
+        var   blockIndex = nextMcu * (component.vertSampling / minVert) * (component.horizSampling / minHoriz);
 
-        for (var i = 0; i < component.vertSampling; i++) {
-          for (var j = 0; j < component.horizSampling; j++) {
+        for (var i = 0; i < component.vertSampling / minVert; i++) {
+          for (var j = 0; j < component.horizSampling / minHoriz; j++) {
             if (approxBitHigh === 0) {
               /* This is the first progressive scan covering this range of coefficients;
                * Retrieve the high-order bits for each one */
