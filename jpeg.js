@@ -882,6 +882,9 @@ class JPEG {
                * coefficient with index between `spectralStart` and `spectralEnd` */
               const block = coefficients[component.id-1][blockIndex];
               if (zeroBands) {
+                /* No coefficients which are currently zero will become non-zero, but we still do
+                 * need to add one 'refinement' low-order bit to each non-zero coefficient
+                 * (Even though this is a so-called 'zero band') */
                 [bytePos, bitPos] = this.readSuccessiveApproximationBits(block, spectralStart, spectralEnd + 1, false, ecs, bytePos, bitPos);
                 zeroBands--;
               } else {
