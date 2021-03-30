@@ -924,10 +924,16 @@ class JPEG {
         const acTable    = this.acTables[component.acTable] || { threshold: 5 };
         const dcContext  = component.dcTable * 49;
         const acContext  = (this.dcTables.length * 49) + (component.acTable * 245);
-        var   blockIndex = nextMcu * (component.vertSampling / minVert) * (component.horizSampling / minHoriz);
 
         for (var i = 0; i < component.vertSampling / minVert; i++) {
           for (var j = 0; j < component.horizSampling / minHoriz; j++) {
+            const blockPxWidth  = 8 * (this.maxHorizSampling / component.horizSampling);
+            const blocksPerRow  = Math.ceil(this.frameData.width / blockPxWidth);
+            const mcusPerRow    = blocksPerRow / (component.horizSampling / minHoriz);
+            const mcuRow        = Math.floor(nextMcu / mcusPerRow);
+            const mcuColumn     = nextMcu % mcusPerRow;
+            const blockIndex    = (mcuRow * mcusPerRow * (component.vertSampling / minVert) * (component.horizSampling / minHoriz)) + (i * blocksPerRow) + (mcuColumn * (component.horizSampling / minHoriz)) + j;
+
             if (approxBitHigh === 0) {
               /* This is the first progressive scan covering this range of coefficients;
                * Retrieve the high-order bits for each one */
@@ -937,11 +943,11 @@ class JPEG {
                 prevDcCoeffs[componentIndex] = band[0];
                 prevDcDeltas[componentIndex] = dcDelta;
               }
-              coefficients[component.id-1][blockIndex++].splice(spectralStart, band.length, ...band);
+              coefficients[component.id-1][blockIndex].splice(spectralStart, band.length, ...band);
             } else {
               /* Successive approximation; refine approximate coefficients by adding low-order bits
                * First add a low-order bit to the DC coefficient, if it is included in this scan */
-              const block = coefficients[component.id-1][blockIndex++];
+              const block = coefficients[component.id-1][blockIndex];
               if (spectralStart === 0) {
                 const [lowBit,] = decoder.decodeDecision(0x5A1D, false)
                 block[0] = (block[0] << 1) | (lowBit ? 1 : 0);
