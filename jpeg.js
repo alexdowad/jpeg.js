@@ -120,11 +120,21 @@ class JPEG {
       while (mcuNumber < jpg.totalMcus) {
         const mcu = [];
         for (const component of jpg.frameData.components) {
-          for (var i = 0; i < component.horizSampling * component.vertSampling; i++) {
-            const coeff = coefficients[component.id-1].shift();
-            const quantTable = jpg.quantTables[component.quantTable].values;
-            const samples = jpg.inverseDCT(jpg.inverseZigzagOrder(jpg.dequantizeCoefficients(coeff, quantTable)));
-            mcu.push(samples);
+          const blockPxWidth  = 8 * (jpg.maxHorizSampling / component.horizSampling);
+          const blocksPerRow  = Math.ceil(jpg.frameData.width / blockPxWidth);
+          const mcusPerRow    = Math.ceil(jpg.frameData.width / jpg.mcuPixelWidth);
+          const mcuRow        = Math.floor(mcuNumber / mcusPerRow);
+          const mcuColumn     = mcuNumber % mcusPerRow;
+          /* Blocks of coefficients are in row-major order
+           * Reassemble them into groups of `horizSampling` width and `vertSampling` height */
+          for (var i = 0; i < component.vertSampling; i++) {
+            for (var j = 0; j < component.horizSampling; j++) {
+              const blockIndex    = (mcuRow * mcusPerRow * component.vertSampling * component.horizSampling) + (i * blocksPerRow) + (mcuColumn * component.horizSampling) + j;
+              const coeff = coefficients[component.id-1][blockIndex];
+              const quantTable = jpg.quantTables[component.quantTable].values;
+              const samples = jpg.inverseDCT(jpg.inverseZigzagOrder(jpg.dequantizeCoefficients(coeff, quantTable)));
+              mcu.push(samples);
+            }
           }
         }
         jpg.paintPixels(raster, mcu, jpg.frameData.components, mcuNumber);
@@ -694,7 +704,16 @@ class JPEG {
      * with a outer array for each image component, and an inner array for each
      * block of 64 coefficients */
 
-    const mcusPerSegment = this.restartInterval ? Math.min(this.restartInterval, this.totalMcus) : this.totalMcus;
+    /* For a progressive scan, the number of blocks in an MCU and the number of MCUs needed to cover the image
+     * (if we don't have restart markers) will vary depending on which components are in this scan! */
+    const components = header.components;
+    const minHoriz = components.reduce((min,c) => Math.min(min, c.horizSampling), Number.MAX_VALUE);
+    const minVert  = components.reduce((min,c) => Math.min(min, c.vertSampling), Number.MAX_VALUE);
+    const mcuPixelWidth = 8 * (this.maxHorizSampling / minHoriz);
+    const mcuPixelHeight = 8 * (this.maxVertSampling / minVert);
+    const totalMcus = Math.ceil(this.frameData.width / mcuPixelWidth) * Math.ceil(this.frameData.height / mcuPixelHeight);
+
+    const mcusPerSegment = this.restartInterval ? Math.min(this.restartInterval, totalMcus) : totalMcus;
     var mcuNumber = 0;
 
     while (true) {
@@ -830,10 +849,16 @@ class JPEG {
         const component  = components[componentIndex];
         const dcDecoder  = this.dcDecoders[component.dcTable];
         const acDecoder  = this.acDecoders[component.acTable];
-        var   blockIndex = nextMcu * (component.vertSampling / minVert) * (component.horizSampling / minHoriz);
 
         for (var i = 0; i < component.vertSampling / minVert; i++) {
           for (var j = 0; j < component.horizSampling / minHoriz; j++) {
+            const blockPxWidth  = 8 * (this.maxHorizSampling / component.horizSampling);
+            const blocksPerRow  = Math.ceil(this.frameData.width / blockPxWidth);
+            const mcusPerRow    = blocksPerRow / (component.horizSampling / minHoriz);
+            const mcuRow        = Math.floor(nextMcu / mcusPerRow);
+            const mcuColumn     = nextMcu % mcusPerRow;
+            const blockIndex    = (mcuRow * mcusPerRow * (component.vertSampling / minVert) * (component.horizSampling / minHoriz)) + (i * blocksPerRow) + (mcuColumn * (component.horizSampling / minHoriz)) + j;
+
             if (approxBitHigh === 0) {
               /* This is the first scan which provides approximate coefficients with
                * indices in `spectralStart`..`spectralEnd` for the current image component.
@@ -841,7 +866,7 @@ class JPEG {
               if (zeroBands) {
                 /* A previous band of coefficients had an 'end of band' marker indicating this
                  * band is filled with zeros */
-                coefficients[component.id-1][blockIndex++].fill(0, spectralStart, spectralEnd+1)
+                coefficients[component.id-1][blockIndex].fill(0, spectralStart, spectralEnd+1)
                 zeroBands--;
               } else {
                 const prevDcCoeff = prevDcCoeffs[componentIndex];
@@ -850,12 +875,12 @@ class JPEG {
                 if (spectralStart === 0) {
                   prevDcCoeffs[componentIndex] = band[0];
                 }
-                coefficients[component.id-1][blockIndex++].splice(spectralStart, band.length, ...band);
+                coefficients[component.id-1][blockIndex].splice(spectralStart, band.length, ...band);
               }
             } else {
               /* This is a subsequent scan which provides more low-end bits for each
                * coefficient with index between `spectralStart` and `spectralEnd` */
-              const block = coefficients[component.id-1][blockIndex++];
+              const block = coefficients[component.id-1][blockIndex];
               if (zeroBands) {
                 [bytePos, bitPos] = this.readSuccessiveApproximationBits(block, spectralStart, spectralEnd + 1, false, ecs, bytePos, bitPos);
                 zeroBands--;
