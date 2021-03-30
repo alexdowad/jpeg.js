@@ -1168,7 +1168,7 @@ class JPEG {
           throw new Error(`On successive approximation refinement scan, magnitude of encoded coefficients must be 1`);
         var skipZeroes = (composite === 0xF0) ? 16 : composite >> 4;
         var skipPositions = 0;
-        while (true) {
+        while (zigZagIndex+skipPositions < spectralEnd) {
           if (coefficients[zigZagIndex + skipPositions] === 0) {
             if (skipZeroes === 0)
               break;
