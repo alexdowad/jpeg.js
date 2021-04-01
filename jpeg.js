@@ -1160,7 +1160,7 @@ class JPEG {
       } else if ((composite & 0xF) === 0 && composite !== 0xF0) {
         var zeroBands;
         [index, bitIndex, zeroBands] = this.readBits(buffer, index, bitIndex, composite >> 4);
-        zeroBands += (1 << (composite >> 4));
+        zeroBands += (1 << (composite >> 4)) - 1; /* Subtract one for the current band */
         [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, spectralEnd + 1, false, buffer, index, bitIndex);
         return [index, bitIndex, zeroBands];
       } else {
