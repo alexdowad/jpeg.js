@@ -742,11 +742,9 @@ class JPEG {
       throw new Error("Unterminated scan section");
 
     /* Extract data for ECS and remove byte stuffing (convert 0xFF00 -> 0xFF) */
-    const ecs = Buffer.allocUnsafe(ecsEnd - index);
+    var ecs = Buffer.allocUnsafe(ecsEnd - index);
     buffer.copy(ecs, 0, index, ecsEnd);
-    this.removeByteStuffing(ecs);
-
-    return [ecs, ecsEnd];
+    return [this.removeByteStuffing(ecs), ecsEnd];
   }
 
   readHuffmanCodedSegment(raster, header, ecs, nextMcu, lastMcu) {
