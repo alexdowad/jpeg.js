@@ -661,24 +661,23 @@ class JPEG {
     /* ECS encodes a series of "MCUs" or "minimum coded units"
      *
      * Each MCU consists of (horizontalSamplingFactor * verticalSamplingFactor) 8x8 blocks
-     * for component 1, then for component 2... up to the last component
-     *
-     * If a restart interval has been defined, each ECS should contain the specified
-     * number of MCUs. Otherwise, it should be enough MCUs to complete the image */
-    const mcusPerSegment = this.restartInterval ? Math.min(this.restartInterval, this.totalMcus) : this.totalMcus;
+     * for component 1, then for component 2... up to the last component */
     var mcuNumber = 0;
 
     /* Decode any number of entropy-coded segments delimited by restart markers */
     while (true) {
       const [ecs, ecsEnd] = this.extractEntropyCodedSegment(buffer, index);
+      /* If a restart interval has been defined, each ECS should contain the specified
+       * number of MCUs. Otherwise, it should be enough MCUs to complete the image */
+      const expectedMcus = this.restartInterval ? Math.min(this.restartInterval, this.totalMcus - mcuNumber) : this.totalMcus;
 
       /* Decode entropy-coded data in this ECS, convert to pixel values, and enter in `raster` */
       if (this.frameData.coding === 'huffman') {
-        this.readHuffmanCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + mcusPerSegment);
+        this.readHuffmanCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + expectedMcus);
       } else {
-        this.readArithmeticCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + mcusPerSegment);
+        this.readArithmeticCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + expectedMcus);
       }
-      mcuNumber += mcusPerSegment;
+      mcuNumber += expectedMcus;
 
       if (buffer[ecsEnd+1] >= 0xD0 && buffer[ecsEnd+1] <= 0xD7) {
         /* Restart marker; continue decoding the scan data */
@@ -713,18 +712,18 @@ class JPEG {
     const mcuPixelHeight = 8 * (this.maxVertSampling / minVert);
     const totalMcus = Math.ceil(this.frameData.width / mcuPixelWidth) * Math.ceil(this.frameData.height / mcuPixelHeight);
 
-    const mcusPerSegment = this.restartInterval ? Math.min(this.restartInterval, totalMcus) : totalMcus;
     var mcuNumber = 0;
 
     while (true) {
       const [ecs, ecsEnd] = this.extractEntropyCodedSegment(buffer, index);
+      const expectedMcus = this.restartInterval ? Math.min(this.restartInterval, totalMcus - mcuNumber) : totalMcus;
 
       if (this.frameData.coding === 'huffman') {
-        this.readProgressiveHuffmanCodedSegment(coefficients, header, ecs, mcuNumber, mcuNumber + mcusPerSegment);
+        this.readProgressiveHuffmanCodedSegment(coefficients, header, ecs, mcuNumber, mcuNumber + expectedMcus);
       } else {
-        this.readProgressiveArithmeticCodedSegment(coefficients, header, ecs, mcuNumber, mcuNumber + mcusPerSegment);
+        this.readProgressiveArithmeticCodedSegment(coefficients, header, ecs, mcuNumber, mcuNumber + expectedMcus);
       }
-      mcuNumber += mcusPerSegment;
+      mcuNumber += expectedMcus;
 
       if (buffer[ecsEnd+1] >= 0xD0 && buffer[ecsEnd+1] <= 0xD7) {
         index = ecsEnd+2;
