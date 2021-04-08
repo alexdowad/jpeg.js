@@ -9,7 +9,7 @@ const data = fs.readFileSync(filename);
 
 var i = 0;
 while (true) {
-  i = data.indexOf(0xFF, i+2);
+  i = data.indexOf(0xFF, i+1);
   if (i == -1)
     break;
 

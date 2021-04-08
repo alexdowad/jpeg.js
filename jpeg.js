@@ -55,7 +55,7 @@ class JPEG {
 
     var i = 0;
     while (true) {
-      i = buffer.indexOf(0xFF, i+2); /* Scan for marker */
+      i = buffer.indexOf(0xFF, i+1); /* Scan for marker */
       if (i == -1)
         break;
 
