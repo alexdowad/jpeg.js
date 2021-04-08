@@ -1095,7 +1095,7 @@ class JPEG {
          * between `spectralStart` and `spectralEnd` are zero */
         var zeroBands;
         [index, bitIndex, zeroBands] = this.readBits(buffer, index, bitIndex, composite >> 4);
-        zeroBands += (1 << (composite >> 4));
+        zeroBands += (1 << (composite >> 4)) - 1; /* Subtract one for the current band */
         while (coefficients.length < nCoefficients)
           coefficients.push(0);
         return [index, bitIndex, coefficients, zeroBands];
