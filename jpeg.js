@@ -1031,11 +1031,9 @@ class JPEG {
           const block  = samples[blockIndex++];
           const xScale = this.maxHorizSampling / component.horizSampling;
           const yScale = this.maxVertSampling  / component.vertSampling;
-          const xShift = Math.log2(xScale);
-          const yShift = Math.log2(yScale);
           for (var y = 0; y < 8 * yScale; y++) {
             for (var x = 0; x < 8 * xScale; x++) {
-              array[(y + (blockY * 8 * yScale))*this.mcuPixelWidth + (x + (blockX * 8 * xScale))] = block[(y >> yShift)*8 + (x >> xShift)];
+              array[(y + (blockY * 8 * yScale))*this.mcuPixelWidth + (x + (blockX * 8 * xScale))] = block[Math.floor(y / yScale)*8 + Math.floor(x / xScale)];
             }
           }
         }
