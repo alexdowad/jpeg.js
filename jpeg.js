@@ -1174,7 +1174,7 @@ class JPEG {
           skipPositions++;
         }
         [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, zigZagIndex + skipPositions, composite !== 0xF0, buffer, index, bitIndex);
-        zigZagIndex += skipPositions + 1;
+        zigZagIndex += skipPositions + (composite == 0xF0 ? 0 : 1);
       }
     }
 
