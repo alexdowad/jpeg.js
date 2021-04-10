@@ -56,7 +56,7 @@ while (true) {
 
     case 0xDB: /* Quantization Tables */
       console.log(`${offset}: Quantization tables`);
-      jpg.dumpQuantizationSegment(data, i);
+      i = jpg.dumpQuantizationSegment(data, i) - 1;
       break;
 
     case 0xDD: /* Define Restart Interval */

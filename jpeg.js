@@ -103,7 +103,7 @@ class JPEG {
           break;
 
         case 0xDB:
-          jpg.handleQuantizationSegment(buffer, i);
+          i = jpg.handleQuantizationSegment(buffer, i) - 1;
           break;
 
         case 0xDD:
@@ -555,7 +555,7 @@ class JPEG {
 
   dumpQuantizationSegment(buffer, index) {
     const length = buffer.readUInt16BE(index+2);
-    const end    = index + length;
+    const end    = index + length + 2;
 
     index += 4;
     while (index < end) {
@@ -566,13 +566,15 @@ class JPEG {
       console.groupEnd();
       index = table.end;
     }
+
+    return index;
   }
 
   handleQuantizationSegment(buffer, index) {
     if (buffer.readUInt16BE(index) !== 0xFFDB)
       throw new Error("Invalid quantization tables segment (wrong marker)");
     const length = buffer.readUInt16BE(index+2);
-    const end    = index + length;
+    const end    = index + length + 2;
 
     index += 4;
     while (index < end) {
@@ -580,6 +582,8 @@ class JPEG {
       this.quantTables[table.number] = table;
       index = table.end;
     }
+
+    return index;
   }
 
   dequantizeCoefficients(coefficients, quantTable) {
