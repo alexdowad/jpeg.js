@@ -858,7 +858,7 @@ class JPEG {
 
         const horizSampling = (components.length == 1) ? 1 : component.horizSampling;
         const vertSampling  = (components.length == 1) ? 1 : component.vertSampling;
-        const blocksPerRow  = Math.ceil(this.frameData.width / (8 * (this.maxHorizSampling / component.horizSampling)));
+        const blocksPerRow  = Math.max(Math.ceil(this.frameData.width / (8 * (this.maxHorizSampling / component.horizSampling))), component.horizSampling);
         const mcuRow        = Math.floor((horizSampling * nextMcu) / blocksPerRow);
         const mcuColumn     = (horizSampling * nextMcu) % blocksPerRow;
 
@@ -931,7 +931,7 @@ class JPEG {
 
         const horizSampling = (components.length == 1) ? 1 : component.horizSampling;
         const vertSampling  = (components.length == 1) ? 1 : component.vertSampling;
-        const blocksPerRow  = Math.ceil(this.frameData.width / (8 * (this.maxHorizSampling / component.horizSampling)));
+        const blocksPerRow  = Math.max(Math.ceil(this.frameData.width / (8 * (this.maxHorizSampling / component.horizSampling))), component.horizSampling);
         const mcuRow        = Math.floor((horizSampling * nextMcu) / blocksPerRow);
         const mcuColumn     = (horizSampling * nextMcu) % blocksPerRow;
 
