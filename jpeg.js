@@ -157,6 +157,7 @@ class JPEG {
     this.mcuPixelWidth = undefined;
     this.mcuPixelHeight = undefined;
     this.totalMcus = undefined;
+    this.mcusPerRow = undefined;
     this.restartInterval = 0;
   }
 
@@ -397,7 +398,8 @@ class JPEG {
     this.mcuPixelWidth = 8 * this.maxHorizSampling;
     this.mcuPixelHeight = 8 * this.maxVertSampling;
     /* How many MCUs will it take to complete the whole image? */
-    this.totalMcus = Math.ceil(this.frameData.width / this.mcuPixelWidth) * Math.ceil(this.frameData.height / this.mcuPixelHeight);
+    this.mcusPerRow = Math.ceil(this.frameData.width / this.mcuPixelWidth);
+    this.totalMcus = this.mcusPerRow * Math.ceil(this.frameData.height / this.mcuPixelHeight);
   }
 
   dumpRestartInterval(buffer, index) {
@@ -858,9 +860,11 @@ class JPEG {
 
         const horizSampling = (components.length == 1) ? 1 : component.horizSampling;
         const vertSampling  = (components.length == 1) ? 1 : component.vertSampling;
-        const blocksPerRow  = Math.max(Math.ceil(this.frameData.width / (8 * (this.maxHorizSampling / component.horizSampling))), component.horizSampling);
+        /* We need to find where in the `coefficients` array to store the data for each block
+         * This can be tricky when different sampling ratios are involved */
+        const blocksPerRow  = this.mcusPerRow * component.horizSampling;
         const mcuRow        = Math.floor((horizSampling * nextMcu) / blocksPerRow);
-        const mcuColumn     = (horizSampling * nextMcu) % blocksPerRow;
+        const mcuColumn     = nextMcu % (blocksPerRow / horizSampling);
 
         for (var i = 0; i < vertSampling; i++) {
           for (var j = 0; j < horizSampling; j++) {
@@ -931,9 +935,9 @@ class JPEG {
 
         const horizSampling = (components.length == 1) ? 1 : component.horizSampling;
         const vertSampling  = (components.length == 1) ? 1 : component.vertSampling;
-        const blocksPerRow  = Math.max(Math.ceil(this.frameData.width / (8 * (this.maxHorizSampling / component.horizSampling))), component.horizSampling);
+        const blocksPerRow  = this.mcusPerRow * component.horizSampling;
         const mcuRow        = Math.floor((horizSampling * nextMcu) / blocksPerRow);
-        const mcuColumn     = (horizSampling * nextMcu) % blocksPerRow;
+        const mcuColumn     = nextMcu % (blocksPerRow / horizSampling);
 
         for (var i = 0; i < vertSampling; i++) {
           for (var j = 0; j < horizSampling; j++) {
