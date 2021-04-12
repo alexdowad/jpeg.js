@@ -706,14 +706,15 @@ class JPEG {
      * Enter all the data found in this scan in `coefficients`; an array of arrays,
      * with a outer array for each image component, and an inner array for each
      * block of 64 coefficients */
-
-    /* For a progressive scan, the number of blocks in an MCU and the number of MCUs needed to cover the image
-     * (if we don't have restart markers) will vary depending on which components are in this scan! */
     const components = header.components;
-    const minHoriz = components.reduce((min,c) => Math.min(min, c.horizSampling), Number.MAX_VALUE);
-    const minVert  = components.reduce((min,c) => Math.min(min, c.vertSampling), Number.MAX_VALUE);
-    const mcuPixelWidth = 8 * (this.maxHorizSampling / minHoriz);
-    const mcuPixelHeight = 8 * (this.maxVertSampling / minVert);
+    var mcuPixelWidth, mcuPixelHeight;
+    if (components.length == 1) {
+      mcuPixelWidth = 8 * (this.maxHorizSampling / components[0].horizSampling);
+      mcuPixelHeight = 8 * (this.maxVertSampling / components[0].vertSampling);
+    } else {
+      mcuPixelWidth = 8 * this.maxHorizSampling;
+      mcuPixelHeight = 8 * this.maxVertSampling;
+    }
     const totalMcus = Math.ceil(this.frameData.width / mcuPixelWidth) * Math.ceil(this.frameData.height / mcuPixelHeight);
 
     var mcuNumber = 0;
@@ -772,8 +773,11 @@ class JPEG {
         const acDecoder  = this.acDecoders[component.acTable];
         const quantTable = this.quantTables[component.quantTable].values;
 
-        for (var i = 0; i < component.vertSampling; i++) {
-          for (var j = 0; j < component.horizSampling; j++) {
+        const horizSampling = (header.components.length == 1) ? 1 : component.horizSampling;
+        const vertSampling  = (header.components.length == 1) ? 1 : component.vertSampling;
+
+        for (var i = 0; i < vertSampling; i++) {
+          for (var j = 0; j < horizSampling; j++) {
             const prevDcCoeff = prevDcCoeffs[componentIndex];
             var coefficients;
             [bytePos, bitPos, coefficients] = this.readHuffmanSampleBlock(ecs, bytePos, bitPos, ecs.length, prevDcCoeff, dcDecoder, acDecoder);
@@ -815,8 +819,12 @@ class JPEG {
         const dcContext   = component.dcTable * 49;
         const acContext   = (this.dcTables.length * 49) + (component.acTable * 245);
 
-        for (var i = 0; i < component.vertSampling; i++) {
-          for (var j = 0; j < component.horizSampling; j++) {
+
+        const horizSampling = (header.components.length == 1) ? 1 : component.horizSampling;
+        const vertSampling  = (header.components.length == 1) ? 1 : component.vertSampling;
+
+        for (var i = 0; i < vertSampling; i++) {
+          for (var j = 0; j < horizSampling; j++) {
             const [prevDcCoeff, prevDcDelta] = [prevDcCoeffs[componentIndex], prevDcDeltas[componentIndex]];
             const [coefficients, dcDelta] = this.readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcContext, acContext);
             prevDcCoeffs[componentIndex] = coefficients[0];
@@ -836,9 +844,6 @@ class JPEG {
     /* Which coefficients are encoded in this scan? And which bits for each coefficient? */
     const { components, spectralStart, spectralEnd, approxBitLow, approxBitHigh } = header;
 
-    const minHoriz = components.reduce((min,c) => Math.min(min, c.horizSampling), Number.MAX_VALUE);
-    const minVert  = components.reduce((min,c) => Math.min(min, c.vertSampling), Number.MAX_VALUE);
-
     var prevDcCoeffs;
     if (approxBitHigh === 0) {
       prevDcCoeffs = new Array(components.length).fill(0);
@@ -851,14 +856,15 @@ class JPEG {
         const dcDecoder  = this.dcDecoders[component.dcTable];
         const acDecoder  = this.acDecoders[component.acTable];
 
-        for (var i = 0; i < component.vertSampling / minVert; i++) {
-          for (var j = 0; j < component.horizSampling / minHoriz; j++) {
-            const blockPxWidth  = 8 * (this.maxHorizSampling / component.horizSampling);
-            const blocksPerRow  = Math.ceil(this.frameData.width / blockPxWidth);
-            const mcusPerRow    = blocksPerRow / (component.horizSampling / minHoriz);
-            const mcuRow        = Math.floor(nextMcu / mcusPerRow);
-            const mcuColumn     = nextMcu % mcusPerRow;
-            const blockIndex    = (mcuRow * mcusPerRow * (component.vertSampling / minVert) * (component.horizSampling / minHoriz)) + (i * blocksPerRow) + (mcuColumn * (component.horizSampling / minHoriz)) + j;
+        const horizSampling = (components.length == 1) ? 1 : component.horizSampling;
+        const vertSampling  = (components.length == 1) ? 1 : component.vertSampling;
+        const blocksPerRow  = Math.ceil(this.frameData.width / (8 * (this.maxHorizSampling / component.horizSampling)));
+        const mcuRow        = Math.floor((horizSampling * nextMcu) / blocksPerRow);
+        const mcuColumn     = (horizSampling * nextMcu) % blocksPerRow;
+
+        for (var i = 0; i < vertSampling; i++) {
+          for (var j = 0; j < horizSampling; j++) {
+            const blockIndex = (((mcuRow * vertSampling) + i) * blocksPerRow) + (mcuColumn * horizSampling) + j;
 
             if (approxBitHigh === 0) {
               /* This is the first scan which provides approximate coefficients with
@@ -903,9 +909,6 @@ class JPEG {
   readProgressiveArithmeticCodedSegment(coefficients, header, ecs, nextMcu, lastMcu) {
     const { components, spectralStart, spectralEnd, approxBitLow, approxBitHigh } = header;
 
-    const minHoriz = components.reduce((min,c) => Math.min(min, c.horizSampling), Number.MAX_VALUE);
-    const minVert  = components.reduce((min,c) => Math.min(min, c.vertSampling), Number.MAX_VALUE);
-
     var prevDcCoeffs, prevDcDeltas;
     if (approxBitHigh === 0) {
       prevDcCoeffs = new Array(components.length).fill(0);
@@ -926,14 +929,15 @@ class JPEG {
         const dcContext  = component.dcTable * 49;
         const acContext  = (this.dcTables.length * 49) + (component.acTable * 245);
 
-        for (var i = 0; i < component.vertSampling / minVert; i++) {
-          for (var j = 0; j < component.horizSampling / minHoriz; j++) {
-            const blockPxWidth  = 8 * (this.maxHorizSampling / component.horizSampling);
-            const blocksPerRow  = Math.ceil(this.frameData.width / blockPxWidth);
-            const mcusPerRow    = blocksPerRow / (component.horizSampling / minHoriz);
-            const mcuRow        = Math.floor(nextMcu / mcusPerRow);
-            const mcuColumn     = nextMcu % mcusPerRow;
-            const blockIndex    = (mcuRow * mcusPerRow * (component.vertSampling / minVert) * (component.horizSampling / minHoriz)) + (i * blocksPerRow) + (mcuColumn * (component.horizSampling / minHoriz)) + j;
+        const horizSampling = (components.length == 1) ? 1 : component.horizSampling;
+        const vertSampling  = (components.length == 1) ? 1 : component.vertSampling;
+        const blocksPerRow  = Math.ceil(this.frameData.width / (8 * (this.maxHorizSampling / component.horizSampling)));
+        const mcuRow        = Math.floor((horizSampling * nextMcu) / blocksPerRow);
+        const mcuColumn     = (horizSampling * nextMcu) % blocksPerRow;
+
+        for (var i = 0; i < vertSampling; i++) {
+          for (var j = 0; j < horizSampling; j++) {
+            const blockIndex = (((mcuRow * vertSampling) + i) * blocksPerRow) + (mcuColumn * horizSampling) + j;
 
             if (approxBitHigh === 0) {
               /* This is the first progressive scan covering this range of coefficients;
