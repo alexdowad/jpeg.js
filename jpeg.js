@@ -1170,10 +1170,28 @@ class JPEG {
         zeroBands += (1 << (composite >> 4)) - 1; /* Subtract one for the current band */
         [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, spectralEnd + 1, false, buffer, index, bitIndex);
         return [index, bitIndex, zeroBands];
+      } else if (composite === 0xF0) {
+        /* Skip 16 zeroes, adding a successive approximation bit to each non-zero coefficient which
+         * we pass along the way; don't add a new non-zero coefficient after the 16 zeroes */
+        var skipPositions = 0;
+        var skipZeroes = 16;
+        while (zigZagIndex+skipPositions < spectralEnd) {
+          if (coefficients[zigZagIndex + skipPositions] === 0) {
+            skipZeroes--;
+            if (skipZeroes === 0)
+              break;
+          }
+          skipPositions++;
+        }
+        [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, zigZagIndex + skipPositions, false, buffer, index, bitIndex);
+        zigZagIndex += skipPositions;
       } else {
-        if ((composite & 0xF) !== 1 && composite !== 0xF0)
+        /* Skip some number of zeroes, adding a successive approximation bit to each non-zero
+         * coefficient which we pass along the way; then add a new non-zero coefficient in the
+         * next zero position after that */
+        if ((composite & 0xF) !== 1)
           throw new Error(`On successive approximation refinement scan, magnitude of encoded coefficients must be 1`);
-        var skipZeroes = (composite === 0xF0) ? 16 : composite >> 4;
+        var skipZeroes = composite >> 4;
         var skipPositions = 0;
         while (zigZagIndex+skipPositions < spectralEnd) {
           if (coefficients[zigZagIndex + skipPositions] === 0) {
@@ -1183,8 +1201,8 @@ class JPEG {
           }
           skipPositions++;
         }
-        [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, zigZagIndex + skipPositions, composite !== 0xF0, buffer, index, bitIndex);
-        zigZagIndex += skipPositions + (composite == 0xF0 ? 0 : 1);
+        [index, bitIndex] = this.readSuccessiveApproximationBits(coefficients, zigZagIndex, zigZagIndex + skipPositions, true, buffer, index, bitIndex);
+        zigZagIndex += skipPositions + 1;
       }
     }
 
