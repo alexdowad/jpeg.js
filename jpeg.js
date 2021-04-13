@@ -129,7 +129,7 @@ class JPEG {
            * Reassemble them into groups of `horizSampling` width and `vertSampling` height */
           for (var i = 0; i < component.vertSampling; i++) {
             for (var j = 0; j < component.horizSampling; j++) {
-              const blockIndex    = (mcuRow * mcusPerRow * component.vertSampling * component.horizSampling) + (i * blocksPerRow) + (mcuColumn * component.horizSampling) + j;
+              const blockIndex = (mcuRow * mcusPerRow * component.vertSampling * component.horizSampling) + (i * blocksPerRow) + (mcuColumn * component.horizSampling) + j;
               const coeff = coefficients[component.id-1][blockIndex];
               const quantTable = jpg.quantTables[component.quantTable].values;
               const samples = jpg.inverseDCT(jpg.inverseZigzagOrder(jpg.dequantizeCoefficients(coeff, quantTable)));
