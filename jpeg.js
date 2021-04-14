@@ -1178,8 +1178,10 @@ class JPEG {
         while (zigZagIndex+skipPositions < spectralEnd) {
           if (coefficients[zigZagIndex + skipPositions] === 0) {
             skipZeroes--;
-            if (skipZeroes === 0)
+            if (skipZeroes === 0) {
+              skipPositions++;
               break;
+            }
           }
           skipPositions++;
         }
