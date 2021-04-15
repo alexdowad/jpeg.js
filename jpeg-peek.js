@@ -1,4 +1,4 @@
-'use strict'
+'use strict';
 
 /* Show a preview of a JPEG file in the terminal, using ANSI color escapes */
 

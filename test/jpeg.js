@@ -1,4 +1,4 @@
-'use strict'
+'use strict';
 
 function equals(a, b) {
   if (Array.isArray(a)) {

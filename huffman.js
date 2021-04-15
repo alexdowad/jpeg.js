@@ -1,4 +1,4 @@
-'use strict'
+'use strict';
 
 /* From a table mapping bitstrings to a corresponding symbol,
  * build a state table for a state machine which can decode

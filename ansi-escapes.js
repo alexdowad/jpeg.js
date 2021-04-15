@@ -1,4 +1,4 @@
-'use strict'
+'use strict';
 
 const palette = [
   /* 8 standard colors; not all terminals use the same RGB values for these

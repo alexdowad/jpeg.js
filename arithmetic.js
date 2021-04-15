@@ -1,3 +1,5 @@
+'use strict';
+
 /* Arithmetic encoding; a super efficient way to pack bits real tight.
  *
  * Requires a separate method for estimating, before encoding each input bit,

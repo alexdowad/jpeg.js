@@ -1,3 +1,5 @@
+'use strict';
+
 const exifTags = new Map([
   [0x010E, 'Image Description'],
   [0x010F, 'Camera Maker'],

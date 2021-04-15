@@ -1,4 +1,4 @@
-'use strict'
+'use strict';
 
 const { prepareDecoder, decodeBuffer, decodeOne } = require("../huffman.js");
 

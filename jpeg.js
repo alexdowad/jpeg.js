@@ -1,4 +1,4 @@
-'use strict'
+'use strict';
 
 const huffman = require('./huffman.js');
 const arithmetic = require('./arithmetic.js');
