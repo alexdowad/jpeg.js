@@ -148,8 +148,10 @@ class JPEG {
   constructor() {
     this.dcTables = [];
     this.acTables = [];
-    this.dcDecoders = [];
+    this.dcDecoders = []; /* For Huffman-coded images */
     this.acDecoders = [];
+    this.dcStats = []; /* For arithmetic-coded images */
+    this.acStats = [];
     this.quantTables = [];
     this.frameData = undefined;
     this.maxHorizSampling = undefined;
@@ -511,10 +513,13 @@ class JPEG {
     index += 4;
     while (index < end) {
       const table = this.readConditioningTable(buffer, index);
-      if (table.type)
+      if (table.type) {
         this.acTables[table.number] = table;
-      else
+        this.acStats[table.number] = new arithmetic.Statistics(245);
+      } else {
         this.dcTables[table.number] = table;
+        this.dcStats[table.number] = new arithmetic.Statistics(49);
+      }
       index += 2;
     }
   }
@@ -681,6 +686,7 @@ class JPEG {
       if (this.frameData.coding === 'huffman') {
         this.readHuffmanCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + expectedMcus);
       } else {
+        this.resetArithmeticStatisticsAreas();
         this.readArithmeticCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + expectedMcus);
       }
       mcuNumber += expectedMcus;
@@ -728,6 +734,7 @@ class JPEG {
       if (this.frameData.coding === 'huffman') {
         this.readProgressiveHuffmanCodedSegment(coefficients, header, ecs, mcuNumber, mcuNumber + expectedMcus);
       } else {
+        this.resetArithmeticStatisticsAreas();
         this.readProgressiveArithmeticCodedSegment(coefficients, header, ecs, mcuNumber, mcuNumber + expectedMcus);
       }
       mcuNumber += expectedMcus;
@@ -804,10 +811,7 @@ class JPEG {
     const prevDcCoeffs = new Array(header.components.length).fill(0);
     const prevDcDeltas = new Array(header.components.length).fill(0);
 
-    /* JPEG spec requires 49 'bins' for probability estimates used when encoding/decoding
-     * DC coefficients (per DC conditioning table), and 245 'bin's for AC coefficients
-     * (per AC conditioning table) */
-    const decoder = new arithmetic.Decoder((49 * this.dcTables.length) + (245 * this.acTables.length), Array.from(ecs));
+    const decoder = new arithmetic.Decoder(Array.from(ecs));
 
     while (nextMcu < lastMcu) {
       var blockIndex = 0;
@@ -818,9 +822,8 @@ class JPEG {
         /* JPEG spec defines default conditioning values in F.1.4.4.1.4 and F.1.4.4.2.1 */
         const dcTable     = this.dcTables[component.dcTable] || { lowThreshold: 0, highThreshold: 2 };
         const acTable     = this.acTables[component.acTable] || { threshold: 5 };
-        const dcContext   = component.dcTable * 49;
-        const acContext   = (this.dcTables.length * 49) + (component.acTable * 245);
-
+        const dcStats     = this.dcStats[component.dcTable];
+        const acStats     = this.acStats[component.acTable];
 
         const horizSampling = (header.components.length == 1) ? 1 : component.horizSampling;
         const vertSampling  = (header.components.length == 1) ? 1 : component.vertSampling;
@@ -828,7 +831,7 @@ class JPEG {
         for (var i = 0; i < vertSampling; i++) {
           for (var j = 0; j < horizSampling; j++) {
             const [prevDcCoeff, prevDcDelta] = [prevDcCoeffs[componentIndex], prevDcDeltas[componentIndex]];
-            const [coefficients, dcDelta] = this.readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcContext, acContext);
+            const [coefficients, dcDelta] = this.readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcStats, acStats);
             prevDcCoeffs[componentIndex] = coefficients[0];
             prevDcDeltas[componentIndex] = dcDelta;
 
@@ -919,10 +922,7 @@ class JPEG {
       prevDcDeltas = new Array(components.length).fill(0);
     }
 
-    /* TODO: I think we need to keep the same decoder
-     * If a new dcTable or acTable is defined... that should wipe out probability 'contexts' for that table...
-     * But each 'Decoder' object is also associated with an array of input bytes... */
-    const decoder = new arithmetic.Decoder((49 * this.dcTables.length) + (245 * this.acTables.length), Array.from(ecs));
+    const decoder = new arithmetic.Decoder(Array.from(ecs));
 
     while (nextMcu < lastMcu) {
       for (var componentIndex = 0; componentIndex < components.length; componentIndex++) {
@@ -930,8 +930,8 @@ class JPEG {
         const quantTable = this.quantTables[component.quantTable].values;
         const dcTable    = this.dcTables[component.dcTable] || { lowThreshold: 0, highThreshold: 2 };
         const acTable    = this.acTables[component.acTable] || { threshold: 5 };
-        const dcContext  = component.dcTable * 49;
-        const acContext  = (this.dcTables.length * 49) + (component.acTable * 245);
+        const dcStats    = this.dcStats[component.dcTable];
+        const acStats    = this.acStats[component.acTable];
 
         const horizSampling = (components.length == 1) ? 1 : component.horizSampling;
         const vertSampling  = (components.length == 1) ? 1 : component.vertSampling;
@@ -947,7 +947,7 @@ class JPEG {
               /* This is the first progressive scan covering this range of coefficients;
                * Retrieve the high-order bits for each one */
               const [prevDcCoeff, prevDcDelta] = [prevDcCoeffs[componentIndex], prevDcDeltas[componentIndex]];
-              const [band, dcDelta] = this.readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcContext, acContext, spectralStart, spectralEnd)
+              const [band, dcDelta] = this.readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcStats, acStats, spectralStart, spectralEnd)
               if (spectralStart === 0) {
                 prevDcCoeffs[componentIndex] = band[0];
                 prevDcDeltas[componentIndex] = dcDelta;
@@ -964,7 +964,7 @@ class JPEG {
 
               /* Now add low-order bits to the AC coefficients in this scan */
               for (var zigZagIndex = spectralStart || 1; zigZagIndex <= spectralEnd; zigZagIndex++) {
-                const SE = acContext + (3 * zigZagIndex);
+                const SE = 3 * zigZagIndex;
 
                 var trailingZeroIndex = spectralEnd;
                 while (!block[trailingZeroIndex] && trailingZeroIndex >= 0)
@@ -974,7 +974,7 @@ class JPEG {
                 /* Are we at 'end of band'?
                  * EOB will always be at the same position _or later_ than it was on the previous progressive
                  * scan covering these coefficients, so for positions before that, no 'EOB?' bit is encoded */
-                if (zigZagIndex >= trailingZeroIndex && decoder.decodeBit(SE)) {
+                if (zigZagIndex >= trailingZeroIndex && decoder.decodeBit(acStats, SE)) {
                   /* We've reached end of band; the remaining bits are all zeroes */
                   component.prevEOBIndex = zigZagIndex;
                   while (zigZagIndex <= spectralEnd)
@@ -983,8 +983,8 @@ class JPEG {
                 }
 
                 if (block[zigZagIndex] !== 0) {
-                  block[zigZagIndex] = (block[zigZagIndex] << 1) + (decoder.decodeBit(SE+2) ? (block[zigZagIndex] > 0 ? 1 : -1) : 0);
-                } else if (decoder.decodeBit(SE+1)) {
+                  block[zigZagIndex] = (block[zigZagIndex] << 1) + (decoder.decodeBit(acStats, SE+2) ? (block[zigZagIndex] > 0 ? 1 : -1) : 0);
+                } else if (decoder.decodeBit(acStats, SE+1)) {
                   /* This coefficient was zero in previous scans, but now we have reached its MSB
                    * Determine if it is positive or negative */
                   const [signBit,] = decoder.decodeDecision(0x5A1D, false);
@@ -1053,6 +1053,13 @@ class JPEG {
     }
 
     return result;
+  }
+
+  resetArithmeticStatisticsAreas() {
+    for (var dcStats of this.dcStats)
+      dcStats.reset();
+    for (var acStats of this.acStats)
+      acStats.reset();
   }
 
   /* Entropy coded segments */
@@ -1125,16 +1132,16 @@ class JPEG {
     return [index, bitIndex, coefficients];
   }
 
-  readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcContext, acContext, spectralStart=0, spectralEnd=63) {
+  readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcStats, acStats, spectralStart=0, spectralEnd=63) {
     var dcCoeff, dcDelta;
     if (spectralStart === 0) {
-      dcDelta = decoder.decodeDCCoefficientDelta(dcContext, prevDcDelta, dcTable.lowThreshold, dcTable.highThreshold);
+      dcDelta = decoder.decodeDCCoefficientDelta(dcStats, prevDcDelta, dcTable.lowThreshold, dcTable.highThreshold);
       dcCoeff = prevDcCoeff + dcDelta;
     }
 
     var coefficients;
     if (spectralEnd !== 0)
-      coefficients = decoder.decodeACCoefficients(acContext, acTable.threshold, (spectralStart === 0) ? 1 : spectralStart, spectralEnd);
+      coefficients = decoder.decodeACCoefficients(acStats, acTable.threshold, (spectralStart === 0) ? 1 : spectralStart, spectralEnd);
     else
       coefficients = [];
 
