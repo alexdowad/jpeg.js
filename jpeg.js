@@ -963,22 +963,25 @@ class JPEG {
               }
 
               /* Now add low-order bits to the AC coefficients in this scan */
+              var trailingZeroIndex = spectralEnd;
+              while (!block[trailingZeroIndex] && trailingZeroIndex >= spectralStart)
+                trailingZeroIndex--;
+              trailingZeroIndex++;
+
               for (var zigZagIndex = spectralStart || 1; zigZagIndex <= spectralEnd; zigZagIndex++) {
                 const SE = 3 * zigZagIndex;
 
-                var trailingZeroIndex = spectralEnd;
-                while (!block[trailingZeroIndex] && trailingZeroIndex >= 0)
-                  trailingZeroIndex--;
-                trailingZeroIndex++;
-
                 /* Are we at 'end of band'?
                  * EOB will always be at the same position _or later_ than it was on the previous progressive
-                 * scan covering these coefficients, so for positions before that, no 'EOB?' bit is encoded */
-                if (zigZagIndex >= trailingZeroIndex && decoder.decodeBit(acStats, SE)) {
+                 * scan covering these coefficients, so for positions before that, no 'EOB?' bit is encoded
+                 *
+                 * Also, if we find a zero coefficient, check if it should be made non-zero, and find it
+                 * should not, then we skip the 'EOB?' check on the next iteration, since EOB cannot occur
+                 * immediately after a zero coefficient */
+                if ((zigZagIndex === trailingZeroIndex || (zigZagIndex > trailingZeroIndex && block[zigZagIndex - 1] !== 0)) && decoder.decodeBit(acStats, SE)) {
                   /* We've reached end of band; the remaining bits are all zeroes */
-                  component.prevEOBIndex = zigZagIndex;
                   while (zigZagIndex <= spectralEnd)
-                      block[zigZagIndex++] <<= 1;
+                    block[zigZagIndex++] <<= 1;
                   break;
                 }
 
