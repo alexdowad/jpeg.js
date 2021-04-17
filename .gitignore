@@ -1,0 +1,6 @@
+*.sublime-workspace
+*.sublime-project
+
+test/random-jpeg
+test/decode-jpeg
+test/jpeg-coefficients
