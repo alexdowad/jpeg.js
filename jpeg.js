@@ -113,6 +113,14 @@ class JPEG {
     }
 
     if (jpg.frameData.progressive) {
+      /*
+      // For debugging incorrect output using test/compare-coeff.js
+      const natural_order = coefficients.map((comp) => {
+        return comp.map((block) => jpg.inverseZigzagOrder(block));
+      });
+      jpg.coefficients = natural_order;
+      */
+
       /* We should have all the coefficients decoded now; convert them to color
        * values and fill in the raster */
       raster = Buffer.alloc(3 * jpg.frameData.width * jpg.frameData.height);
