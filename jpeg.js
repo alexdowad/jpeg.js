@@ -51,17 +51,18 @@ class JPEG {
 
   static fromBytes = function(buffer) {
     const jpg = new JPEG();
-    var raster, coefficients;
 
     var i = 0;
     while (true) {
       i = buffer.indexOf(0xFF, i+1); /* Scan for marker */
       if (i == -1)
-        break;
+        break; /* Reached the end */
 
       const marker = buffer[i+1];
-      if (marker === 0xFF || marker === 0)
+      if (marker === 0xFF || marker === 0) {
+        i++;
         continue;
+      }
 
       switch (marker) {
         case 0xC0: case 0xC1: case 0xC2: case 0xC3:
@@ -69,13 +70,16 @@ class JPEG {
         case 0xC9: case 0xCA: case 0xCB: case 0xCD:
         case 0xCE: case 0xCF:
           jpg.handleFrameHeader(buffer, i);
+          jpg.initCoefficientsArray();
           break;
 
         case 0xC4:
+          /* TODO: skip over */
           jpg.handleHuffmanSegment(buffer, i);
           break;
 
         case 0xCC:
+          /* TODO: skip over */
           jpg.handleConditioningSegment(buffer, i);
           break;
 
@@ -85,20 +89,9 @@ class JPEG {
 
         case 0xDA:
           if (jpg.frameData.progressive) {
-            if (!coefficients) {
-              /* `coefficients` will be an array of arrays; each sub-array will
-               * hold one block of 64 coefficients */
-              coefficients = [];
-              for (const component of jpg.frameData.components) {
-                const blocks = new Array(jpg.totalMcus * component.horizSampling * component.vertSampling);
-                for (var idx = 0; idx < blocks.length; idx++)
-                  blocks[idx] = new Array(64).fill(0);
-                coefficients.push(blocks);
-              }
-            }
-            jpg.readProgressiveScan(buffer, i, coefficients);
+            jpg.readProgressiveScan(buffer, i);
           } else {
-            raster = jpg.readBaselineScan(buffer, i);
+            jpg.readBaselineScan(buffer, i);
           }
           break;
 
@@ -112,42 +105,43 @@ class JPEG {
       }
     }
 
-    if (jpg.frameData.progressive) {
-      /*
-      // For debugging incorrect output using test/compare-coeff.js
-      const natural_order = coefficients.map((comp) => {
-        return comp.map((block) => jpg.inverseZigzagOrder(block));
-      });
-      jpg.coefficients = natural_order;
-      */
+    /* Now convert all coefficient blocks to natural (rather than zig-zag) order */
+    for (const component of jpg.frameData.components) {
+      const coeffs = jpg.coefficients[component.id-1];
+      for (const coeffRow of coeffs) {
+        for (const coeffBlock of coeffRow) {
+          const quantTable = jpg.quantTables[component.quantTable].values;
+          /* Overwrite block with dequantized and reordered coefficients */
+          coeffBlock.splice(0, 64, ...jpg.inverseZigzagOrder(jpg.dequantizeCoefficients(coeffBlock, quantTable)));
+        }
+      }
+    }
 
-      /* We should have all the coefficients decoded now; convert them to color
-       * values and fill in the raster */
-      raster = Buffer.alloc(3 * jpg.frameData.width * jpg.frameData.height);
-      var mcuNumber = 0;
-      while (mcuNumber < jpg.totalMcus) {
-        const mcu = [];
-        for (const component of jpg.frameData.components) {
-          const blockPxWidth  = 8 * (jpg.maxHorizSampling / component.horizSampling);
-          const blocksPerRow  = Math.ceil(jpg.frameData.width / blockPxWidth);
-          const mcusPerRow    = Math.ceil(jpg.frameData.width / jpg.mcuPixelWidth);
-          const mcuRow        = Math.floor(mcuNumber / mcusPerRow);
-          const mcuColumn     = mcuNumber % mcusPerRow;
-          /* Blocks of coefficients are in row-major order
-           * Reassemble them into groups of `horizSampling` width and `vertSampling` height */
-          for (var i = 0; i < component.vertSampling; i++) {
-            for (var j = 0; j < component.horizSampling; j++) {
-              const blockIndex = (mcuRow * mcusPerRow * component.vertSampling * component.horizSampling) + (i * blocksPerRow) + (mcuColumn * component.horizSampling) + j;
-              const coeff = coefficients[component.id-1][blockIndex];
-              const quantTable = jpg.quantTables[component.quantTable].values;
-              const samples = jpg.inverseDCT(jpg.inverseZigzagOrder(jpg.dequantizeCoefficients(coeff, quantTable)));
-              mcu.push(samples);
+    /* Assemble blocks of coefficients from each component into interleaved MCU-size groups,
+     * use the inverse DCT to convert to color samples, and enter these samples in the raster */
+    const raster = Buffer.alloc(3 * jpg.frameData.width * jpg.frameData.height);
+    const dummyBlock = new Array(64).fill(0);
+    for (var mcuNumber = 0; mcuNumber < jpg.totalMcus; mcuNumber++) {
+      const mcuRow = Math.floor(mcuNumber / jpg.mcusPerRow);
+      const mcuCol = mcuNumber % jpg.mcusPerRow;
+      const mcu    = [];
+
+      for (const component of jpg.frameData.components) {
+        const coeffs = jpg.coefficients[component.id-1];
+        for (var blockRow = 0; blockRow < component.vertSampling; blockRow++) {
+          for (var blockCol = 0; blockCol < component.horizSampling; blockCol++) {
+            const row = coeffs[(mcuRow * component.vertSampling) + blockRow];
+            if (!row) {
+              mcu.push(dummyBlock);
+            } else {
+              const block = row[(mcuCol * component.horizSampling) + blockCol];
+              mcu.push((block && jpg.inverseDCT(block)) || dummyBlock);
             }
           }
         }
-        jpg.paintPixels(raster, mcu, jpg.frameData.components, mcuNumber);
-        mcuNumber++;
       }
+
+      jpg.paintPixels(raster, mcu, jpg.frameData.components, mcuNumber);
     }
 
     return [jpg, raster];
@@ -161,10 +155,11 @@ class JPEG {
     this.dcStats = []; /* For arithmetic-coded images */
     this.acStats = [];
     this.quantTables = [];
+    this.coefficients = [];
     this.frameData = undefined;
     this.maxHorizSampling = undefined;
     this.maxVertSampling = undefined;
-    this.mcuPixelWidth = undefined;
+    this.mcuPixelWidth = undefined; /* For interleaved scans */
     this.mcuPixelHeight = undefined;
     this.totalMcus = undefined;
     this.mcusPerRow = undefined;
@@ -260,11 +255,9 @@ class JPEG {
             value = value.map((n) => exif.lookupTables.get(tagNumber).get(n) || n);
         }
         imageData.push([tagNumber, exif.tags.get(tagNumber), value]);
-
         index += 12;
       }
       images.push(imageData);
-
       index = tiffHeader + readInt32(index);
     }
 
@@ -405,11 +398,27 @@ class JPEG {
     this.frameData = this.readFrameHeader(buffer, index);
     this.maxHorizSampling = this.frameData.components.reduce((max,c) => Math.max(max, c.horizSampling), 0);
     this.maxVertSampling = this.frameData.components.reduce((max,c) => Math.max(max, c.vertSampling), 0);
+
+    /* For interleaved scans, which include blocks from all image components, each 'MCU' or group
+     * of encoded blocks will cover this much of the image: */
     this.mcuPixelWidth = 8 * this.maxHorizSampling;
     this.mcuPixelHeight = 8 * this.maxVertSampling;
-    /* How many MCUs will it take to complete the whole image? */
+
+    /* How many MCUs will it take to complete the whole image (if interleaved scans are used)? */
     this.mcusPerRow = Math.ceil(this.frameData.width / this.mcuPixelWidth);
     this.totalMcus = this.mcusPerRow * Math.ceil(this.frameData.height / this.mcuPixelHeight);
+
+    /* For non-interleaved scans, one block is counted as one 'MCU' and additional blocks which
+     * fall outside the bounds of the image are not included just to complete the required
+     * number of blocks for each MCU.
+     * For such scans, our interest is just in how much of the image is covered by one block
+     * of samples for a specific image component. */
+    for (const component of this.frameData.components) {
+      component.blockPixelWidth  = 8 * (this.maxHorizSampling / component.horizSampling);
+      component.blockPixelHeight = 8 * (this.maxVertSampling  / component.vertSampling);
+      component.blocksPerRow = Math.ceil(this.frameData.width  / component.blockPixelWidth);
+      component.blocksPerCol = Math.ceil(this.frameData.height / component.blockPixelHeight);
+    }
   }
 
   dumpRestartInterval(buffer, index) {
@@ -420,6 +429,24 @@ class JPEG {
 
   handleRestartInterval(buffer, index) {
     this.restartInterval = buffer.readUInt16BE(index+4);
+  }
+
+  initCoefficientsArray() {
+    /* `coefficients` is a 4-level nested array:
+     *
+     * `coefficients[ci]`            --> all coefficients for an image component
+     * `coefficients[ci][ri]`        --> all coefficients for a row of blocks of a component
+     * `coefficients[ci][ri][bi]`    --> all coefficients for a specific block
+     * `coefficients[ci][ri][bi][k]` --> one coefficient at index K (which may be zig-zag or natural order) */
+    this.coefficients = new Array(this.frameData.components.length);
+    for (const component of this.frameData.components) {
+      const blockRows = this.coefficients[component.id-1] = new Array(component.blocksPerCol);
+      for (var i = 0; i < blockRows.length; i++) {
+        const row = blockRows[i] = [];
+        for (var j = 0; j < component.blocksPerRow; j++)
+          row.push(new Array(64).fill(0));
+      }
+    }
   }
 
   /* Huffman Tables */
@@ -623,14 +650,7 @@ class JPEG {
     while (nComponents-- > 0) {
       const componentId = buffer[index];
       const componentData = this.frameData.components[componentId-1];
-      components.push({
-        id: componentId,
-        dcTable: buffer[index+1] >> 4,
-        acTable: buffer[index+1] & 0xF,
-        quantTable: componentData.quantTable,
-        horizSampling: componentData.horizSampling,
-        vertSampling: componentData.vertSampling
-      });
+      components.push(Object.assign({ dcTable: buffer[index+1] >> 4, acTable: buffer[index+1] & 0xF }, componentData));
       index += 2;
     }
 
@@ -660,7 +680,6 @@ class JPEG {
       }
     }
 
-    result.blocksPerMcu = components.reduce((sum,c) => sum + (c.horizSampling * c.vertSampling), 0);
     return result;
   }
 
@@ -673,9 +692,6 @@ class JPEG {
   readBaselineScan(buffer, index) {
     const header = this.readScanHeader(buffer, index);
     index += buffer.readUInt16BE(index+2) + 2; /* Go past end of scan header */
-
-    /* Result, in 24-bit RGB format (3 successive bytes per pixel) */
-    const raster = Buffer.alloc(3 * this.frameData.width * this.frameData.height);
 
     /* ECS encodes a series of "MCUs" or "minimum coded units"
      *
@@ -690,12 +706,12 @@ class JPEG {
        * number of MCUs. Otherwise, it should be enough MCUs to complete the image */
       const expectedMcus = this.restartInterval ? Math.min(this.restartInterval, this.totalMcus - mcuNumber) : this.totalMcus;
 
-      /* Decode entropy-coded data in this ECS, convert to pixel values, and enter in `raster` */
+      /* Decode entropy-coded data in this ECS and update `coefficients` */
       if (this.frameData.coding === 'huffman') {
-        this.readHuffmanCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + expectedMcus);
+        this.readHuffmanCodedSegment(header, ecs, mcuNumber, mcuNumber + expectedMcus);
       } else {
         this.resetArithmeticStatisticsAreas();
-        this.readArithmeticCodedSegment(raster, header, ecs, mcuNumber, mcuNumber + expectedMcus);
+        this.readArithmeticCodedSegment(header, ecs, mcuNumber, mcuNumber + expectedMcus);
       }
       mcuNumber += expectedMcus;
 
@@ -706,33 +722,21 @@ class JPEG {
         break;
       }
     }
-
-    return raster;
   }
 
   readProgressiveScan(buffer, index, coefficients) {
     const header = this.readScanHeader(buffer, index);
+    const components = header.components;
+    const interleaved = components.length > 1;
+
     index += buffer.readUInt16BE(index+2) + 2; /* Go past end of scan header */
 
     /* Unlike a baseline scan, which encodes all the data for an entire image,
      * each progressive scan carries only part of the image data. A progressive
      * scan may only encode some of the coefficients for each block of the image,
-     * and it may not carry all the bits for each coefficient.
-     *
-     * Enter all the data found in this scan in `coefficients`; an array of arrays,
-     * with a outer array for each image component, and an inner array for each
-     * block of 64 coefficients */
-    const components = header.components;
-    var mcuPixelWidth, mcuPixelHeight;
-    if (components.length == 1) {
-      mcuPixelWidth = 8 * (this.maxHorizSampling / components[0].horizSampling);
-      mcuPixelHeight = 8 * (this.maxVertSampling / components[0].vertSampling);
-    } else {
-      mcuPixelWidth = 8 * this.maxHorizSampling;
-      mcuPixelHeight = 8 * this.maxVertSampling;
-    }
-    const totalMcus = Math.ceil(this.frameData.width / mcuPixelWidth) * Math.ceil(this.frameData.height / mcuPixelHeight);
-
+     * and it may not carry all the bits for each coefficient. Also, a progressive
+     * scan may be for all image components, or for one component only. */
+    const totalMcus = interleaved ? this.totalMcus : (components[0].blocksPerRow * components[0].blocksPerCol);
     var mcuNumber = 0;
 
     while (true) {
@@ -740,10 +744,10 @@ class JPEG {
       const expectedMcus = this.restartInterval ? Math.min(this.restartInterval, totalMcus - mcuNumber) : totalMcus;
 
       if (this.frameData.coding === 'huffman') {
-        this.readProgressiveHuffmanCodedSegment(coefficients, header, ecs, mcuNumber, mcuNumber + expectedMcus);
+        this.readProgressiveHuffmanCodedSegment(header, ecs, mcuNumber, mcuNumber + expectedMcus);
       } else {
         this.resetArithmeticStatisticsAreas();
-        this.readProgressiveArithmeticCodedSegment(coefficients, header, ecs, mcuNumber, mcuNumber + expectedMcus);
+        this.readProgressiveArithmeticCodedSegment(header, ecs, mcuNumber, mcuNumber + expectedMcus);
       }
       mcuNumber += expectedMcus;
 
@@ -769,140 +773,134 @@ class JPEG {
     return [this.removeByteStuffing(ecs), ecsEnd];
   }
 
-  readHuffmanCodedSegment(raster, header, ecs, nextMcu, lastMcu) {
-    const samples = new Array(header.blocksPerMcu);
-
+  readHuffmanCodedSegment(header, ecs, nextMcu, lastMcu) {
     /* For each image component, we need to track the last DC coefficient seen within
      * the current scan; it is used to help calculate the next DC coefficient */
     const prevDcCoeffs = new Array(header.components.length).fill(0);
+    const interleaved  = header.components.length > 1;
 
-    /* Decode enough blocks to form a complete MCU, then enter the pixel values in `raster`
+    /* Decode enough blocks to form a complete MCU
      * Then start again on the next MCU, until we reach the end of this ECS */
-    var bytePos = 0, bitPos = 0;
-    while (nextMcu < lastMcu && bytePos < ecs.length) {
-      var blockIndex = 0;
+    var bytePos = 0, bitPos = 0, block;
 
+    while (nextMcu < lastMcu && bytePos < ecs.length) {
       /* The scan header tells us which image components are present in this scan,
        * and in which order. Follow the specified order */
       for (var componentIndex = 0; componentIndex < header.components.length; componentIndex++) {
         const component  = header.components[componentIndex];
         const dcDecoder  = this.dcDecoders[component.dcTable];
         const acDecoder  = this.acDecoders[component.acTable];
-        const quantTable = this.quantTables[component.quantTable].values;
+        const coeffs     = this.coefficients[component.id-1];
 
-        const horizSampling = (header.components.length == 1) ? 1 : component.horizSampling;
-        const vertSampling  = (header.components.length == 1) ? 1 : component.vertSampling;
+        const horizBlocks = interleaved ? component.horizSampling : 1;
+        const vertBlocks  = interleaved ? component.vertSampling  : 1;
+        const rowIndex    = interleaved ? (Math.floor(nextMcu / this.mcusPerRow) * component.vertSampling) : Math.floor(nextMcu / component.blocksPerRow);
+        const colIndex    = interleaved ? ((nextMcu % this.mcusPerRow) * component.horizSampling) : (nextMcu % component.blocksPerRow);
 
-        for (var i = 0; i < vertSampling; i++) {
-          for (var j = 0; j < horizSampling; j++) {
+        for (var i = 0; i < vertBlocks; i++) {
+          for (var j = 0; j < horizBlocks; j++) {
             const prevDcCoeff = prevDcCoeffs[componentIndex];
-            var coefficients;
-            [bytePos, bitPos, coefficients] = this.readHuffmanSampleBlock(ecs, bytePos, bitPos, ecs.length, prevDcCoeff, dcDecoder, acDecoder);
-            prevDcCoeffs[componentIndex] = coefficients[0];
+            [bytePos, bitPos, block] = this.readHuffmanSampleBlock(ecs, bytePos, bitPos, ecs.length, prevDcCoeff, dcDecoder, acDecoder);
+            prevDcCoeffs[componentIndex] = block[0];
 
-            /* Entropy-coded data has been decoded to DCT (discrete cosine transform) coefficients;
-             * Now convert those coefficients back to an array of color samples */
-            samples[blockIndex++] = this.inverseDCT(this.inverseZigzagOrder(this.dequantizeCoefficients(coefficients, quantTable)));
+            if ((rowIndex + i) >= component.blocksPerCol || (colIndex + j) >= component.blocksPerRow) {
+              /* This is a dummy block which falls outside the bounds of the image; it's only here to complete the
+               * required number of blocks for each component within each MCU */
+              continue;
+            }
+            coeffs[rowIndex + i][colIndex + j] = block;
           }
         }
       }
-
-      /* Got one whole MCU, now convert samples to RGB color space and fill in raster */
-      this.paintPixels(raster, samples, header.components, nextMcu);
       nextMcu++;
     }
   }
 
-  readArithmeticCodedSegment(raster, header, ecs, nextMcu, lastMcu) {
-    const samples = new Array(header.blocksPerMcu);
-
+  readArithmeticCodedSegment(header, ecs, nextMcu, lastMcu) {
     const prevDcCoeffs = new Array(header.components.length).fill(0);
     const prevDcDeltas = new Array(header.components.length).fill(0);
-
-    const decoder = new arithmetic.Decoder(Array.from(ecs));
+    const interleaved  = header.components.length > 1;
+    const decoder      = new arithmetic.Decoder(Array.from(ecs));
 
     while (nextMcu < lastMcu) {
-      var blockIndex = 0;
-
       for (var componentIndex = 0; componentIndex < header.components.length; componentIndex++) {
-        const component   = header.components[componentIndex];
-        const quantTable  = this.quantTables[component.quantTable].values;
+        const component  = header.components[componentIndex];
         /* JPEG spec defines default conditioning values in F.1.4.4.1.4 and F.1.4.4.2.1 */
-        const dcTable     = this.dcTables[component.dcTable] || { lowThreshold: 0, highThreshold: 2 };
-        const acTable     = this.acTables[component.acTable] || { threshold: 5 };
-        const dcStats     = this.dcStats[component.dcTable];
-        const acStats     = this.acStats[component.acTable];
+        const dcTable    = this.dcTables[component.dcTable] || { lowThreshold: 0, highThreshold: 2 };
+        const acTable    = this.acTables[component.acTable] || { threshold: 5 };
+        const dcStats    = this.dcStats[component.dcTable];
+        const acStats    = this.acStats[component.acTable];
+        const coeffs     = this.coefficients[component.id-1];
 
-        const horizSampling = (header.components.length == 1) ? 1 : component.horizSampling;
-        const vertSampling  = (header.components.length == 1) ? 1 : component.vertSampling;
+        const horizBlocks = interleaved ? component.horizSampling : 1;
+        const vertBlocks  = interleaved ? component.vertSampling  : 1;
+        const rowIndex    = interleaved ? (Math.floor(nextMcu / this.mcusPerRow) * component.vertSampling) : Math.floor(nextMcu / component.blocksPerRow);
+        const colIndex    = interleaved ? ((nextMcu % this.mcusPerRow) * component.horizSampling) : (nextMcu % component.blocksPerRow);
 
-        for (var i = 0; i < vertSampling; i++) {
-          for (var j = 0; j < horizSampling; j++) {
+        for (var i = 0; i < vertBlocks; i++) {
+          for (var j = 0; j < horizBlocks; j++) {
             const [prevDcCoeff, prevDcDelta] = [prevDcCoeffs[componentIndex], prevDcDeltas[componentIndex]];
-            const [coefficients, dcDelta] = this.readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcStats, acStats);
-            prevDcCoeffs[componentIndex] = coefficients[0];
+            const [block, dcDelta] = this.readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcStats, acStats);
+            prevDcCoeffs[componentIndex] = block[0];
             prevDcDeltas[componentIndex] = dcDelta;
 
-            samples[blockIndex++] = this.inverseDCT(this.inverseZigzagOrder(this.dequantizeCoefficients(coefficients, quantTable)));
+            if ((rowIndex + i) >= component.blocksPerCol || (colIndex + j) >= component.blocksPerRow) {
+              /* This is a dummy block which falls outside the bounds of the image; it's only here to complete the
+               * required number of blocks for each component within each MCU */
+              continue;
+            }
+            coeffs[rowIndex + i][colIndex + j] = block;
           }
         }
       }
-
-      this.paintPixels(raster, samples, header.components, nextMcu);
       nextMcu++;
     }
   }
 
-  readProgressiveHuffmanCodedSegment(coefficients, header, ecs, nextMcu, lastMcu) {
+  readProgressiveHuffmanCodedSegment(header, ecs, nextMcu, lastMcu) {
     /* Which coefficients are encoded in this scan? And which bits for each coefficient? */
     const { components, spectralStart, spectralEnd, approxBitLow, approxBitHigh } = header;
 
-    var prevDcCoeffs;
-    if (approxBitHigh === 0) {
-      prevDcCoeffs = new Array(components.length).fill(0);
-    }
+    const prevDcCoeffs = (approxBitHigh === 0) && new Array(components.length).fill(0);
+    const interleaved  = header.components.length > 1;
 
-    var bytePos = 0, bitPos = 0, zeroBands = 0;
+    var bytePos = 0, bitPos = 0, zeroBands = 0, band;
     while (nextMcu < lastMcu && bytePos < ecs.length) {
       for (var componentIndex = 0; componentIndex < components.length; componentIndex++) {
         const component  = components[componentIndex];
         const dcDecoder  = this.dcDecoders[component.dcTable];
         const acDecoder  = this.acDecoders[component.acTable];
+        const coeffs     = this.coefficients[component.id-1];
 
-        const horizSampling = (components.length == 1) ? 1 : component.horizSampling;
-        const vertSampling  = (components.length == 1) ? 1 : component.vertSampling;
-        /* We need to find where in the `coefficients` array to store the data for each block
-         * This can be tricky when different sampling ratios are involved */
-        const blocksPerRow  = this.mcusPerRow * component.horizSampling;
-        const mcuRow        = Math.floor((horizSampling * nextMcu) / blocksPerRow);
-        const mcuColumn     = nextMcu % (blocksPerRow / horizSampling);
+        const horizBlocks = interleaved ? component.horizSampling : 1;
+        const vertBlocks  = interleaved ? component.vertSampling  : 1;
+        const rowIndex    = interleaved ? (Math.floor(nextMcu / this.mcusPerRow) * component.vertSampling) : Math.floor(nextMcu / component.blocksPerRow);
+        const colIndex    = interleaved ? ((nextMcu % this.mcusPerRow) * component.horizSampling) : (nextMcu % component.blocksPerRow);
 
-        for (var i = 0; i < vertSampling; i++) {
-          for (var j = 0; j < horizSampling; j++) {
-            const blockIndex = (((mcuRow * vertSampling) + i) * blocksPerRow) + (mcuColumn * horizSampling) + j;
+        for (var i = 0; i < vertBlocks; i++) {
+          for (var j = 0; j < horizBlocks; j++) {
+            const dummyBlock = ((rowIndex + i) >= component.blocksPerCol) || ((colIndex + j) >= component.blocksPerRow);
+            const block = dummyBlock ? (new Array(64).fill(0)) : coeffs[rowIndex + i][colIndex + j];
 
             if (approxBitHigh === 0) {
               /* This is the first scan which provides approximate coefficients with
                * indices in `spectralStart`..`spectralEnd` for the current image component.
                * The manner of encoding these approximate coefficients is just like a baseline scan */
               if (zeroBands) {
-                /* A previous band of coefficients had an 'end of band' marker indicating this
-                 * band is filled with zeros */
-                coefficients[component.id-1][blockIndex].fill(0, spectralStart, spectralEnd+1)
+                /* A previous band of coefficients had an 'end of band' marker indicating this band is filled with zeros
+                 * Since we initialize all the blocks by filling with zeroes, we don't need to do anything */
                 zeroBands--;
               } else {
                 const prevDcCoeff = prevDcCoeffs[componentIndex];
-                var band;
                 [bytePos, bitPos, band, zeroBands] = this.readHuffmanSampleBlock(ecs, bytePos, bitPos, ecs.length, prevDcCoeff, dcDecoder, acDecoder, spectralStart, spectralEnd);
-                if (spectralStart === 0) {
+                if (spectralStart === 0)
                   prevDcCoeffs[componentIndex] = band[0];
-                }
-                coefficients[component.id-1][blockIndex].splice(spectralStart, band.length, ...band);
+                if (block)
+                  block.splice(spectralStart, band.length, ...band);
               }
             } else {
-              /* This is a subsequent scan which provides more low-end bits for each
+              /* This is a subsequent 'refinement' scan which provides more low-end bits for each
                * coefficient with index between `spectralStart` and `spectralEnd` */
-              const block = coefficients[component.id-1][blockIndex];
               if (zeroBands) {
                 /* No coefficients which are currently zero will become non-zero, but we still do
                  * need to add one 'refinement' low-order bit to each non-zero coefficient
@@ -916,55 +914,51 @@ class JPEG {
           }
         }
       }
-
       nextMcu++;
     }
   }
 
-  readProgressiveArithmeticCodedSegment(coefficients, header, ecs, nextMcu, lastMcu) {
+  readProgressiveArithmeticCodedSegment(header, ecs, nextMcu, lastMcu) {
     const { components, spectralStart, spectralEnd, approxBitLow, approxBitHigh } = header;
 
-    var prevDcCoeffs, prevDcDeltas;
-    if (approxBitHigh === 0) {
-      prevDcCoeffs = new Array(components.length).fill(0);
-      prevDcDeltas = new Array(components.length).fill(0);
-    }
-
-    const decoder = new arithmetic.Decoder(Array.from(ecs));
+    const prevDcCoeffs = (approxBitHigh === 0) && new Array(components.length).fill(0);
+    const prevDcDeltas = (approxBitHigh === 0) && new Array(components.length).fill(0);
+    const interleaved  = header.components.length > 1;
+    const decoder      = new arithmetic.Decoder(Array.from(ecs));
 
     while (nextMcu < lastMcu) {
       for (var componentIndex = 0; componentIndex < components.length; componentIndex++) {
-        const component  = components[componentIndex];
-        const quantTable = this.quantTables[component.quantTable].values;
-        const dcTable    = this.dcTables[component.dcTable] || { lowThreshold: 0, highThreshold: 2 };
-        const acTable    = this.acTables[component.acTable] || { threshold: 5 };
-        const dcStats    = this.dcStats[component.dcTable];
-        const acStats    = this.acStats[component.acTable];
+        const component = components[componentIndex];
+        const dcTable   = this.dcTables[component.dcTable] || { lowThreshold: 0, highThreshold: 2 };
+        const acTable   = this.acTables[component.acTable] || { threshold: 5 };
+        const dcStats   = this.dcStats[component.dcTable];
+        const acStats   = this.acStats[component.acTable];
+        const coeffs    = this.coefficients[component.id-1];
 
-        const horizSampling = (components.length == 1) ? 1 : component.horizSampling;
-        const vertSampling  = (components.length == 1) ? 1 : component.vertSampling;
-        const blocksPerRow  = this.mcusPerRow * component.horizSampling;
-        const mcuRow        = Math.floor((horizSampling * nextMcu) / blocksPerRow);
-        const mcuColumn     = nextMcu % (blocksPerRow / horizSampling);
+        const horizBlocks = interleaved ? component.horizSampling : 1;
+        const vertBlocks  = interleaved ? component.vertSampling  : 1;
+        const rowIndex    = interleaved ? (Math.floor(nextMcu / this.mcusPerRow) * component.vertSampling) : Math.floor(nextMcu / component.blocksPerRow);
+        const colIndex    = interleaved ? ((nextMcu % this.mcusPerRow) * component.horizSampling) : (nextMcu % component.blocksPerRow);
 
-        for (var i = 0; i < vertSampling; i++) {
-          for (var j = 0; j < horizSampling; j++) {
-            const blockIndex = (((mcuRow * vertSampling) + i) * blocksPerRow) + (mcuColumn * horizSampling) + j;
+        for (var i = 0; i < vertBlocks; i++) {
+          for (var j = 0; j < horizBlocks; j++) {
+            const dummyBlock = ((rowIndex + i) >= component.blocksPerCol) || ((colIndex + j) >= component.blocksPerRow);
+            const block = dummyBlock ? [] : coeffs[rowIndex + i][colIndex + j];
 
             if (approxBitHigh === 0) {
               /* This is the first progressive scan covering this range of coefficients;
                * Retrieve the high-order bits for each one */
               const [prevDcCoeff, prevDcDelta] = [prevDcCoeffs[componentIndex], prevDcDeltas[componentIndex]];
-              const [band, dcDelta] = this.readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcStats, acStats, spectralStart, spectralEnd)
+              const [band, dcDelta] = this.readArithmeticSampleBlock(decoder, prevDcCoeff, prevDcDelta, dcTable, acTable, dcStats, acStats, spectralStart, spectralEnd);
               if (spectralStart === 0) {
                 prevDcCoeffs[componentIndex] = band[0];
                 prevDcDeltas[componentIndex] = dcDelta;
               }
-              coefficients[component.id-1][blockIndex].splice(spectralStart, band.length, ...band);
+              if (block)
+                block.splice(spectralStart, band.length, ...band);
             } else {
               /* Successive approximation; refine approximate coefficients by adding low-order bits
                * First add a low-order bit to the DC coefficient, if it is included in this scan */
-              const block = coefficients[component.id-1][blockIndex];
               if (spectralStart === 0) {
                 const [lowBit,] = decoder.decodeDecision(0x5A1D, false)
                 block[0] = (block[0] << 1) | (lowBit ? 1 : 0);
@@ -976,7 +970,7 @@ class JPEG {
                 trailingZeroIndex--;
               trailingZeroIndex++;
 
-              for (var zigZagIndex = spectralStart || 1; zigZagIndex <= spectralEnd; zigZagIndex++) {
+              for (var zigZagIndex = Math.max(spectralStart, 1); zigZagIndex <= spectralEnd; zigZagIndex++) {
                 const SE = 3 * zigZagIndex;
 
                 /* Are we at 'end of band'?
@@ -1006,7 +1000,6 @@ class JPEG {
           }
         }
       }
-
       nextMcu++;
     }
   }
